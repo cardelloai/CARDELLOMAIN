@@ -12,7 +12,9 @@
  *
  * This happens in two steps:
  *   1. Ask a text model to write the exact headline / subheading / caption
- *      copy, personalized from the customer's answers.
+ *      copy, personalized from the customer's answers — and to dream up a
+ *      big, silly, literal scene concept (for the "Funny" tone) or a warm,
+ *      natural one (for other tones).
  *   2. Ask an image model to render a photorealistic scene around the
  *      uploaded photo with that exact copy as bold poster typography.
  *
@@ -44,10 +46,25 @@ const TONE_WORDS = {
   elegant: "elegant, classic, understated",
 };
 
-/** Step 1: have a text model write the exact on-card copy. */
+/** Step 1: have a text model write the exact on-card copy, plus dream up the
+ *  big, silly, literal scene concept the image model will render. */
 async function generateCopy({ occasion, relationship, recipientName, details, tone }) {
   const who = recipientName || relationship || "this person";
   const toneWord = TONE_WORDS[tone] || TONE_WORDS.heartfelt;
+  const isFunny = tone === "funny" || !tone;
+
+  const sceneInstruction = isFunny
+    ? `- "sceneIdea": ONE vivid sentence describing a big, silly, LITERALLY exaggerated action scene that combines ` +
+      `the occasion and what the customer told us about them. Take their interest and blow it up to an absurd, ` +
+      `larger-than-life scale — don't just show them doing the hobby normally, put them INSIDE an over-the-top ` +
+      `version of it. Examples of the style we want: if it's Christmas, "riding a giant reindeer through a snowy ` +
+      `night sky like Santa, sack of presents flying behind them"; if they love fishing and beer, "riding on the ` +
+      `back of a massive leaping fish through a lake, a frosty beer held high in one hand, sunglasses on, huge grin"; ` +
+      `if they love golf, "swinging a golf club the size of a telephone pole, ball rocketing past the moon". Be ` +
+      `genuinely funny and visual, not just a normal photo of the activity — the sillier and more literal, the better.`
+    : `- "sceneIdea": ONE sentence describing a warm, natural scene that ties the occasion to what the customer told ` +
+      `us about them (their hobby, interest, or what makes them special), staged like a nice, personal photograph — ` +
+      `not absurd, just thoughtful and specific to them.`;
 
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -62,18 +79,19 @@ async function generateCopy({ occasion, relationship, recipientName, details, to
         {
           role: "user",
           content:
-            `You are writing the on-card copy for a personalized novelty greeting card poster, ` +
+            `You are writing the on-card copy AND the scene concept for a personalized novelty greeting card poster, ` +
             `for a "${occasion || "special"}" occasion, ${toneWord} in tone. ` +
             `The card is for the customer's ${relationship || "loved one"}${recipientName ? ` (${recipientName})` : ""}. ` +
             `What the customer told us about them: "${details || "no extra details given"}". ` +
             `Return strict JSON with these fields:\n` +
-            `- "headline": a short, punchy 2-5 word headline like a card shop cover would have (e.g. "Happy Birthday!"). Keep it under 25 characters.\n` +
+            sceneInstruction +
+            `\n- "headline": a short, punchy 2-5 word headline like a card shop cover would have (e.g. "Happy Birthday!"). Keep it under 25 characters.\n` +
             `- "subheading": one short punchy line (under 60 characters) personalized to them.\n` +
-            `- "captions": an array of exactly 4 very short prop/sign labels (2-4 words each, ALL CAPS, like novelty-card callouts — e.g. "GRILL CHILL REPEAT", "BEST BUDDY ALWAYS") that riff on the details given. If no specific interests were given, make them generic but fitting the occasion.\n` +
+            `- "captions": an array of exactly 4 very short prop/sign labels (2-4 words each, ALL CAPS, like novelty-card callouts — e.g. "GRILL CHILL REPEAT", "BEST BUDDY ALWAYS") that riff on the details given and the scene. If no specific interests were given, make them generic but fitting the occasion.\n` +
             `Keep every string short — these get rendered as typography on an image, so brevity matters. No emoji.`,
         },
       ],
-      temperature: 0.9,
+      temperature: 1.0,
     }),
   });
 
@@ -83,6 +101,7 @@ async function generateCopy({ occasion, relationship, recipientName, details, to
       headline: `Happy ${occasion || "Day"}!`,
       subheading: "Made just for you.",
       captions: ["MADE WITH LOVE", "JUST FOR YOU", "CHEERS TO YOU", "ENJOY THE DAY"],
+      sceneIdea: "",
     };
   }
 
@@ -93,12 +112,14 @@ async function generateCopy({ occasion, relationship, recipientName, details, to
       headline: parsed.headline || `Happy ${occasion || "Day"}!`,
       subheading: parsed.subheading || "",
       captions: Array.isArray(parsed.captions) ? parsed.captions.slice(0, 4) : [],
+      sceneIdea: parsed.sceneIdea || "",
     };
   } catch {
     return {
       headline: `Happy ${occasion || "Day"}!`,
       subheading: "Made just for you.",
       captions: [],
+      sceneIdea: "",
     };
   }
 }
@@ -107,6 +128,7 @@ function buildScenePrompt({ occasion, relationship, recipientName, details, tone
   const who = recipientName ? `${relationship} named ${recipientName}` : relationship || "loved one";
   const about = details && details.trim() ? details.trim() : "a wonderful, one-of-a-kind person";
   const toneWord = TONE_WORDS[tone] || TONE_WORDS.heartfelt;
+  const isFunny = tone === "funny" || !tone;
   const captionList = copy.captions.length ? copy.captions.map((c) => `"${c}"`).join(", ") : "none";
 
   const subjectLine = isGroup
@@ -118,16 +140,24 @@ function buildScenePrompt({ occasion, relationship, recipientName, details, tone
       `recognizable (same face, same likeness), do NOT turn them into a cartoon or illustration. ` +
       `They are the customer's ${who}.`;
 
+  const sceneLine = copy.sceneIdea
+    ? isFunny
+      ? `THE SCENE (most important part — commit to this fully): ${copy.sceneIdea}. Really sell the scale and the ` +
+        `joke — exaggerated proportions, dynamic action pose, a big goofy grin, dramatic lighting like a movie ` +
+        `poster. This should look genuinely funny and larger-than-life, not like a normal posed photo.`
+      : `THE SCENE: ${copy.sceneIdea}. Keep it natural, warm, and true to life.`
+    : `Stage them in a fun, realistic photo scene fitting the occasion and their interests, with props ` +
+      `and background details relevant to what was said about them.`;
+
   return (
     `Create a personalized novelty greeting card poster for a "${occasion || "special"}" occasion. ` +
     `${subjectLine} About them, from the customer: ${about}. ` +
-    `Stage ${isGroup ? "them" : "them"} in a fun, realistic photo scene fitting the occasion and their interests, with props ` +
-    `and background details relevant to what was said about them. ` +
+    `${sceneLine} ` +
     `Overlay this exact bold poster typography on the image, spelled exactly as given: ` +
     `headline text "${copy.headline}" prominently at the top; ` +
     `subheading text "${copy.subheading}" below the headline, smaller; ` +
     `and these short caption/sign labels placed naturally on props or as small signage within the scene: ${captionList}. ` +
-    `Render all text crisply, correctly spelled, and legible — this is the most important part of the image. ` +
+    `Render all text crisply, correctly spelled, and legible — this is the most important part of the typography. ` +
     `Overall feeling: ${toneWord}. High-quality commercial photography look, suitable for a printed greeting card cover.`
   );
 }
@@ -269,6 +299,4 @@ module.exports = async (req, res) => {
     res.status(200).json({ designs, suggestedMessage, copy });
   } catch (err) {
     console.error("generate-cards error:", err);
-    res.status(500).json({ error: "Something went wrong generating your card designs. Please try again." });
-  }
-};
+    res.status(500).json({ error: "Something went wrong generating your card designs.

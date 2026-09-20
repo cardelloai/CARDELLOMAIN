@@ -31,10 +31,10 @@
 
 // Different typography/poster treatments — the photo and copy stay the
 // same, only the visual "card shop style" changes between options.
+// Kept to 2 variants (rather than 4) to cut AI image-generation cost in
+// half, since each variant is a separate paid image generation call.
 const STYLE_VARIANTS = [
-  "rustic wood-sign poster style: distressed wooden headline signs, warm golden-hour lighting, outdoorsy garage/cabin backdrop",
   "clean bold modern poster style: crisp sans-serif headline type, bright saturated colors, simple uncluttered background",
-  "vintage Americana poster style: hand-painted lettering, retro color grading, nostalgic diner/roadside-sign feel",
   "playful comic-bold poster style: thick outlined lettering, punchy contrast colors, fun oversized prop callouts",
 ];
 

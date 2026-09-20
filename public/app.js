@@ -1,601 +1,304 @@
-/* Cardello — guided card-creation wizard
-   Plain JS, no build step. Talks to /api/* serverless functions. */
+/**
+ * POST /api/generate-cards
+ *
+ * Turns the customer's answers + uploaded photo into 4 card design options,
+ * plus a suggested inside-card message.
+ *
+ * Design style: bold, photorealistic "poster" cards — the customer's own
+ * photo, kept realistic (not cartoonified), staged in a fun scene related to
+ * their interests, with a big headline ("Happy Birthday!"), a short personal
+ * subheading, and a few punchy caption/prop labels baked into the image
+ * (think: novelty birthday card you'd find in a card shop, personalized).
+ *
+ * This happens in two steps:
+ *   1. Ask a text model to write the exact headline / subheading / caption
+ *      copy, personalized from the customer's answers — and to dream up a
+ *      big, silly, literal scene concept (for the "Funny" tone) or a warm,
+ *      natural one (for other tones).
+ *   2. Ask an image model to render a photorealistic scene around the
+ *      uploaded photo with that exact copy as bold poster typography.
+ *
+ * IMPORTANT CAVEAT: image models are not perfectly reliable at rendering
+ * multiple short text strings without typos or garbled letters — it's much
+ * better than it used to be, but not perfect. Generate a batch of real test
+ * cards before launch and check the on-image text carefully; consider
+ * regenerating (or letting the customer regenerate) any design where the
+ * text came out wrong rather than shipping it as-is.
+ *
+ * Uses OpenAI's image + chat APIs directly via fetch — no SDK required, so
+ * this deploys with zero npm install.
+ *
+ * Required env var: OPENAI_API_KEY
+ */
 
-(function () {
-  "use strict";
+// Different typography/poster treatments — the photo and copy stay the
+// same, only the visual "card shop style" changes between options.
+const STYLE_VARIANTS = [
+  "rustic wood-sign poster style: distressed wooden headline signs, warm golden-hour lighting, outdoorsy garage/cabin backdrop",
+  "clean bold modern poster style: crisp sans-serif headline type, bright saturated colors, simple uncluttered background",
+  "vintage Americana poster style: hand-painted lettering, retro color grading, nostalgic diner/roadside-sign feel",
+  "playful comic-bold poster style: thick outlined lettering, punchy contrast colors, fun oversized prop callouts",
+];
 
-  const state = {
-    step: 0,
-    occasion: null,
-    occasionOther: "",
-    relationship: null,
-    relationshipOther: "",
-    recipientName: "",
-    details: "",
-    tone: null,
-    photoDataUrl: null,
-    photoFile: null,
-    groupPhotos: [],       // [{dataUrl, name}] — used when relationship === "group"
-    designs: [],           // [{id, url}]
-    selectedDesignId: null,
-    message: "",
-    cardSize: "standard",  // standard | large
-    finish: "matte",       // matte | glossy
-  };
+const TONE_WORDS = {
+  funny: "funny, playful, tongue-in-cheek",
+  heartfelt: "warm, heartfelt, sincere",
+  elegant: "elegant, classic, understated",
+};
 
-  const OCCASIONS = [
-    { id: "birthday", label: "Birthday", emoji: "🎂" },
-    { id: "christmas", label: "Christmas", emoji: "🎄" },
-    { id: "anniversary", label: "Anniversary", emoji: "💍" },
-    { id: "congratulations", label: "Congratulations", emoji: "🎉" },
-    { id: "thank-you", label: "Thank You", emoji: "🙏" },
-    { id: "get-well", label: "Get Well Soon", emoji: "🌻" },
-    { id: "sympathy", label: "Sympathy", emoji: "🕊️" },
-    { id: "holiday", label: "Other Holiday", emoji: "🎆" },
-    { id: "new-baby", label: "New Baby", emoji: "👶" },
-    { id: "wedding", label: "Wedding", emoji: "💐" },
-    { id: "retirement", label: "Retirement", emoji: "🌴" },
-    { id: "pet", label: "Pet's Birthday", emoji: "🐾" },
-    { id: "just-because", label: "Just Because", emoji: "💌" },
-    { id: "other", label: "Something Else", emoji: "✨" },
-  ];
+/** Step 1: have a text model write the exact on-card copy, plus dream up the
+ *  big, silly, literal scene concept the image model will render. */
+async function generateCopy({ occasion, relationship, recipientName, details, tone }) {
+  const who = recipientName || relationship || "this person";
+  const toneWord = TONE_WORDS[tone] || TONE_WORDS.heartfelt;
+  const isFunny = tone === "funny" || !tone;
 
-  const RELATIONSHIPS = [
-    { id: "mom", label: "My Mom", emoji: "👩" },
-    { id: "dad", label: "My Dad", emoji: "👨" },
-    { id: "spouse", label: "My Spouse / Partner", emoji: "💑" },
-    { id: "grandparent", label: "My Grandparent", emoji: "👵" },
-    { id: "child", label: "My Son / Daughter", emoji: "🧒" },
-    { id: "sibling", label: "My Sibling", emoji: "👫" },
-    { id: "friend", label: "A Friend", emoji: "🤝" },
-    { id: "group", label: "Family or Friends (Group)", emoji: "👨‍👩‍👧‍👦" },
-    { id: "other", label: "Someone Else", emoji: "❤️" },
-  ];
+  const sceneInstruction = isFunny
+    ? `- "sceneIdea": ONE vivid sentence describing a big, silly, LITERALLY exaggerated action scene that combines ` +
+      `the occasion and what the customer told us about them. Take their interest and blow it up to an absurd, ` +
+      `larger-than-life scale — don't just show them doing the hobby normally, put them INSIDE an over-the-top ` +
+      `version of it. Examples of the style we want: if it's Christmas, "riding a giant reindeer through a snowy ` +
+      `night sky like Santa, sack of presents flying behind them"; if they love fishing and beer, "riding on the ` +
+      `back of a massive leaping fish through a lake, a frosty beer held high in one hand, sunglasses on, huge grin"; ` +
+      `if they love golf, "swinging a golf club the size of a telephone pole, ball rocketing past the moon". Be ` +
+      `genuinely funny and visual, not just a normal photo of the activity — the sillier and more literal, the better.`
+    : `- "sceneIdea": ONE sentence describing a warm, natural scene that ties the occasion to what the customer told ` +
+      `us about them (their hobby, interest, or what makes them special), staged like a nice, personal photograph — ` +
+      `not absurd, just thoughtful and specific to them.`;
 
-  const TONES = [
-    { id: "funny", label: "Funny & Playful", emoji: "😄" },
-    { id: "heartfelt", label: "Heartfelt & Warm", emoji: "🥰" },
-    { id: "elegant", label: "Elegant & Classic", emoji: "🌹" },
-  ];
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "user",
+          content:
+            `You are writing the on-card copy AND the scene concept for a personalized novelty greeting card poster, ` +
+            `for a "${occasion || "special"}" occasion, ${toneWord} in tone. ` +
+            `The card is for the customer's ${relationship || "loved one"}${recipientName ? ` (${recipientName})` : ""}. ` +
+            `What the customer told us about them: "${details || "no extra details given"}". ` +
+            `Return strict JSON with these fields:\n` +
+            sceneInstruction +
+            `\n- "headline": a short, punchy 2-5 word headline like a card shop cover would have (e.g. "Happy Birthday!"). Keep it under 25 characters.\n` +
+            `- "subheading": one short punchy line (under 60 characters) personalized to them.\n` +
+            `- "captions": an array of exactly 4 very short prop/sign labels (2-4 words each, ALL CAPS, like novelty-card callouts — e.g. "GRILL CHILL REPEAT", "BEST BUDDY ALWAYS") that riff on the details given and the scene. If no specific interests were given, make them generic but fitting the occasion.\n` +
+            `Keep every string short — these get rendered as typography on an image, so brevity matters. No emoji.`,
+        },
+      ],
+      temperature: 1.0,
+    }),
+  });
 
-  const CARD_PRICE = { standard: 6.99, large: 9.99 };
-  const FINISH_ADD = { matte: 0, glossy: 1.0 };
+  if (!resp.ok) {
+    // Fall back to safe generic copy rather than failing the whole request.
+    return {
+      headline: `Happy ${occasion || "Day"}!`,
+      subheading: "Made just for you.",
+      captions: ["MADE WITH LOVE", "JUST FOR YOU", "CHEERS TO YOU", "ENJOY THE DAY"],
+      sceneIdea: "",
+    };
+  }
 
-  function el(tag, attrs, children) {
-    const node = document.createElement(tag);
-    if (attrs) {
-      for (const k in attrs) {
-        if (k === "class") node.className = attrs[k];
-        else if (k === "html") node.innerHTML = attrs[k];
-        else node.setAttribute(k, attrs[k]);
-      }
+  const data = await resp.json();
+  try {
+    const parsed = JSON.parse(data.choices[0].message.content);
+    return {
+      headline: parsed.headline || `Happy ${occasion || "Day"}!`,
+      subheading: parsed.subheading || "",
+      captions: Array.isArray(parsed.captions) ? parsed.captions.slice(0, 4) : [],
+      sceneIdea: parsed.sceneIdea || "",
+    };
+  } catch {
+    return {
+      headline: `Happy ${occasion || "Day"}!`,
+      subheading: "Made just for you.",
+      captions: [],
+      sceneIdea: "",
+    };
+  }
+}
+
+function buildScenePrompt({ occasion, relationship, recipientName, details, tone, copy, isGroup, groupCount }) {
+  const who = recipientName ? `${relationship} named ${recipientName}` : relationship || "loved one";
+  const about = details && details.trim() ? details.trim() : "a wonderful, one-of-a-kind person";
+  const toneWord = TONE_WORDS[tone] || TONE_WORDS.heartfelt;
+  const isFunny = tone === "funny" || !tone;
+  const captionList = copy.captions.length ? copy.captions.map((c) => `"${c}"`).join(", ") : "none";
+
+  const subjectLine = isGroup
+    ? `Use the ${groupCount} people in the attached photos as the subjects — keep every one of them ` +
+      `photorealistic and clearly recognizable (same face, same likeness) from their own reference photo, ` +
+      `do NOT turn them into cartoons or illustrations. Stage the whole group together naturally in one ` +
+      `scene, as if they were photographed side by side. They are the customer's ${relationship || "family or friends"}.`
+    : `Use the person in the attached photo as the subject — keep them photorealistic and clearly ` +
+      `recognizable (same face, same likeness), do NOT turn them into a cartoon or illustration. ` +
+      `They are the customer's ${who}.`;
+
+  const sceneLine = copy.sceneIdea
+    ? isFunny
+      ? `THE SCENE (most important part — commit to this fully): ${copy.sceneIdea}. Really sell the scale and the ` +
+        `joke — exaggerated proportions, dynamic action pose, a big goofy grin, dramatic lighting like a movie ` +
+        `poster. This should look genuinely funny and larger-than-life, not like a normal posed photo.`
+      : `THE SCENE: ${copy.sceneIdea}. Keep it natural, warm, and true to life.`
+    : `Stage them in a fun, realistic photo scene fitting the occasion and their interests, with props ` +
+      `and background details relevant to what was said about them.`;
+
+  return (
+    `Create a personalized novelty greeting card poster for a "${occasion || "special"}" occasion. ` +
+    `${subjectLine} About them, from the customer: ${about}. ` +
+    `${sceneLine} ` +
+    `Overlay this exact bold poster typography on the image, spelled exactly as given: ` +
+    `headline text "${copy.headline}" prominently at the top; ` +
+    `subheading text "${copy.subheading}" below the headline, smaller; ` +
+    `and these short caption/sign labels placed naturally on props or as small signage within the scene: ${captionList}. ` +
+    `Render all text crisply, correctly spelled, and legible — this is the most important part of the typography. ` +
+    `Overall feeling: ${toneWord}. High-quality commercial photography look, suitable for a printed greeting card cover.`
+  );
+}
+
+async function generateOneDesign({ prompt, styleDescriptor, photos }) {
+  const fullPrompt = `${prompt} Poster treatment: ${styleDescriptor}.`;
+
+  const form = new FormData();
+  form.append("model", "gpt-image-1");
+  form.append("prompt", fullPrompt);
+  form.append("size", "1024x1536"); // portrait, card-shaped
+  form.append("n", "1");
+
+  photos.forEach(({ base64, mimeType }, i) => {
+    const buffer = Buffer.from(base64, "base64");
+    const blob = new Blob([buffer], { type: mimeType || "image/png" });
+    form.append("image[]", blob, `photo-${i}.png`);
+  });
+
+  const resp = await fetch("https://api.openai.com/v1/images/edits", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: form,
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Image generation failed: ${resp.status} ${errText}`);
+  }
+
+  const data = await resp.json();
+  const b64 = data.data && data.data[0] && data.data[0].b64_json;
+  if (!b64) throw new Error("No image returned from image generation API");
+  return `data:image/png;base64,${b64}`;
+}
+
+async function generateSuggestedMessage({ occasion, relationship, recipientName, details, tone }) {
+  const toneWord = TONE_WORDS[tone] || TONE_WORDS.heartfelt;
+
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content:
+            `Write a short, ${toneWord} greeting card message (3-5 sentences max) for a ${occasion || "special"} card. ` +
+            `It's from the customer to their ${relationship || "loved one"}${recipientName ? `, ${recipientName}` : ""}. ` +
+            `Details about them: ${details || "none provided"}. ` +
+            `Write only the message text — no quotation marks, no signature line, no preamble.`,
+        },
+      ],
+      temperature: 0.9,
+    }),
+  });
+
+  if (!resp.ok) return "";
+  const data = await resp.json();
+  return (data.choices && data.choices[0] && data.choices[0].message.content.trim()) || "";
+}
+
+module.exports = async (req, res) => {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    res.status(500).json({
+      error:
+        "Image generation isn't configured yet. Set the OPENAI_API_KEY environment variable to enable AI card generation.",
+    });
+    return;
+  }
+
+  try {
+    const { occasion, relationship, recipientName, details, tone, photoDataUrl, groupPhotoDataUrls } =
+      req.body || {};
+
+    const isGroup = Array.isArray(groupPhotoDataUrls) && groupPhotoDataUrls.length > 0;
+    const rawPhotoUrls = isGroup ? groupPhotoDataUrls : photoDataUrl ? [photoDataUrl] : [];
+
+    if (rawPhotoUrls.length === 0) {
+      res.status(400).json({ error: isGroup ? "At least one photo is required." : "A photo is required." });
+      return;
     }
-    (children || []).forEach((c) => {
-      if (typeof c === "string") node.appendChild(document.createTextNode(c));
-      else if (c) node.appendChild(c);
-    });
-    return node;
-  }
-
-  const panel = document.getElementById("stepPanel");
-  const progressFill = document.getElementById("progressFill");
-
-  const STEPS = [
-    renderOccasion,
-    renderRelationship,
-    renderDetails,
-    renderPhoto,
-    renderGenerating,
-    renderPickDesign,
-    renderCustomize,
-    renderCheckoutRedirect,
-  ];
-
-  function setProgress() {
-    const pct = Math.round((state.step / (STEPS.length - 1)) * 100);
-    progressFill.style.width = pct + "%";
-  }
-
-  function goTo(stepIndex) {
-    state.step = stepIndex;
-    setProgress();
-    panel.innerHTML = "";
-    STEPS[stepIndex]();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function next() { goTo(state.step + 1); }
-  function back() { goTo(Math.max(0, state.step - 1)); }
-
-  function navRow({ onBack, onNext, nextLabel, nextDisabled }) {
-    const row = el("div", { class: "nav-row" }, [
-      state.step > 0
-        ? el("button", { class: "btn btn-secondary" }, ["Back"])
-        : el("span", { class: "spacer" }),
-      el("span", { class: "spacer" }),
-      el("button", { class: "btn btn-primary" }, [nextLabel || "Continue"]),
-    ]);
-    const backBtn = row.querySelector(".btn-secondary");
-    const nextBtn = row.querySelector(".btn-primary");
-    if (backBtn) backBtn.addEventListener("click", onBack || back);
-    if (nextBtn) {
-      nextBtn.addEventListener("click", onNext || next);
-      if (nextDisabled) nextBtn.disabled = true;
-    }
-    return row;
-  }
-
-  function choiceGrid(options, selectedId, onSelect) {
-    const grid = el("div", { class: "choice-grid" });
-    options.forEach((opt) => {
-      const card = el(
-        "div",
-        { class: "choice-card" + (selectedId === opt.id ? " selected" : "") },
-        [el("span", { class: "emoji" }, [opt.emoji]), el("span", {}, [opt.label])]
-      );
-      card.addEventListener("click", () => onSelect(opt.id));
-      grid.appendChild(card);
-    });
-    return grid;
-  }
-
-  // ---------- Step 1: Occasion ----------
-  function renderOccasion() {
-    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 1 of 7"]));
-    panel.appendChild(el("h2", { class: "step-title" }, ["What's the occasion?"]));
-    panel.appendChild(el("p", { class: "step-sub" }, ["Pick the one that fits best."]));
-
-    let selected = state.occasion;
-    const grid = choiceGrid(OCCASIONS, selected, (id) => {
-      state.occasion = id;
-      goTo(state.step); // re-render to show selection + continue button state
-    });
-    panel.appendChild(grid);
-
-    if (state.occasion === "other") {
-      const field = el("div", { class: "field", style: "margin-top:24px;" }, [
-        el("label", {}, ["What's the occasion?"]),
-        el("input", { type: "text", id: "occasionOtherInput", value: state.occasionOther || "" }),
-      ]);
-      panel.appendChild(field);
-      field.querySelector("input").addEventListener("input", (e) => {
-        state.occasionOther = e.target.value;
-      });
-    }
-
-    const canContinue = state.occasion && (state.occasion !== "other" || state.occasionOther.trim());
-    panel.appendChild(
-      navRow({ nextDisabled: !canContinue, onNext: canContinue ? next : (e) => e.preventDefault() })
-    );
-  }
-
-  // ---------- Step 2: Relationship ----------
-  function renderRelationship() {
-    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 2 of 7"]));
-    panel.appendChild(el("h2", { class: "step-title" }, ["Who is this card for?"]));
-    panel.appendChild(el("p", { class: "step-sub" }, ["Choose who they are to you."]));
-
-    const grid = choiceGrid(RELATIONSHIPS, state.relationship, (id) => {
-      state.relationship = id;
-      goTo(state.step);
-    });
-    panel.appendChild(grid);
-
-    if (state.relationship === "other") {
-      const field = el("div", { class: "field", style: "margin-top:24px;" }, [
-        el("label", {}, ["How would you describe them?"]),
-        el("input", { type: "text", id: "relOtherInput", value: state.relationshipOther || "", placeholder: "e.g. My neighbor" }),
-      ]);
-      panel.appendChild(field);
-      field.querySelector("input").addEventListener("input", (e) => {
-        state.relationshipOther = e.target.value;
-      });
-    }
-
-    const nameField = el("div", { class: "field", style: "margin-top:24px;" }, [
-      el("label", {}, ["What's their first name? (optional)"]),
-      el("input", { type: "text", id: "nameInput", value: state.recipientName || "", placeholder: "e.g. Robert" }),
-    ]);
-    panel.appendChild(nameField);
-    nameField.querySelector("input").addEventListener("input", (e) => {
-      state.recipientName = e.target.value;
-    });
-
-    const canContinue = state.relationship && (state.relationship !== "other" || state.relationshipOther.trim());
-    panel.appendChild(navRow({ nextDisabled: !canContinue }));
-  }
-
-  // ---------- Step 3: Details & tone ----------
-  function renderDetails() {
-    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 3 of 7"]));
-    panel.appendChild(el("h2", { class: "step-title" }, ["Tell us a little about them"]));
-    panel.appendChild(el("p", { class: "step-sub" }, [
-      "A hobby, something they love, or a fun detail — this helps our AI design a card that feels like them.",
-    ]));
-
-    const field = el("div", { class: "field" }, [
-      el("label", {}, ["What do they love, or what makes them special?"]),
-      el("textarea", { id: "detailsInput", placeholder: "e.g. He loves fishing, terrible dad jokes, and his golden retriever Max." }, [state.details || ""]),
-      el("p", { class: "hint" }, ["A sentence or two is plenty."]),
-    ]);
-    panel.appendChild(field);
-    field.querySelector("textarea").addEventListener("input", (e) => {
-      state.details = e.target.value;
-    });
-
-    panel.appendChild(el("div", { class: "field" }, [el("label", {}, ["What feeling should the card have?"])]));
-    const grid = choiceGrid(TONES, state.tone, (id) => {
-      state.tone = id;
-      goTo(state.step);
-    });
-    panel.appendChild(grid);
-
-    const canContinue = !!state.tone;
-    panel.appendChild(navRow({ nextDisabled: !canContinue }));
-  }
-
-  // ---------- Step 4: Photo upload ----------
-  function renderPhoto() {
-    if (state.relationship === "group") {
-      renderGroupPhotos();
+    if (rawPhotoUrls.length > 8) {
+      res.status(400).json({ error: "Please upload at most 8 photos." });
       return;
     }
 
-    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 4 of 7"]));
-    panel.appendChild(el("h2", { class: "step-title" }, ["Add a photo"]));
-    panel.appendChild(el("p", { class: "step-sub" }, [
-      "Upload one clear photo of them. Our AI will use it to design your card.",
-    ]));
-
-    const fileInput = el("input", { type: "file", accept: "image/*", class: "visually-hidden", id: "photoFileInput" });
-    const box = el("div", { class: "upload-box" }, [
-      el("div", { class: "icon" }, ["📷"]),
-      el("p", {}, ["Tap here to choose a photo"]),
-      el("p", { class: "small" }, ["JPG or PNG, from your camera roll or files"]),
-    ]);
-    box.addEventListener("click", () => fileInput.click());
-
-    panel.appendChild(box);
-    panel.appendChild(fileInput);
-
-    const previewWrap = el("div", { id: "previewWrap" });
-    panel.appendChild(previewWrap);
-
-    function renderPreview() {
-      previewWrap.innerHTML = "";
-      if (state.photoDataUrl) {
-        const row = el("div", { class: "upload-preview" }, [
-          el("img", { src: state.photoDataUrl, alt: "Selected photo" }),
-          el("button", { class: "btn btn-link" }, ["Choose a different photo"]),
-        ]);
-        row.querySelector("button").addEventListener("click", () => fileInput.click());
-        previewWrap.appendChild(row);
+    const photos = [];
+    for (const url of rawPhotoUrls) {
+      const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(url || "");
+      if (!match) {
+        res.status(400).json({ error: "One of the photos could not be read. Please try a different image." });
+        return;
       }
+      photos.push({ mimeType: match[1], base64: match[2] });
     }
-    renderPreview();
 
-    fileInput.addEventListener("change", () => {
-      const file = fileInput.files && fileInput.files[0];
-      if (!file) return;
-      state.photoFile = file;
-      const reader = new FileReader();
-      reader.onload = () => {
-        state.photoDataUrl = reader.result;
-        renderPreview();
-        updateContinueState();
-      };
-      reader.readAsDataURL(file);
-    });
-
-    const nav = navRow({ nextDisabled: !state.photoDataUrl, onNext: () => next() });
-    panel.appendChild(nav);
-
-    function updateContinueState() {
-      const nextBtn = nav.querySelector(".btn-primary");
-      nextBtn.disabled = !state.photoDataUrl;
-    }
-  }
-
-  // ---------- Step 4b: Group photo upload (Family or Friends) ----------
-  const MAX_GROUP_PHOTOS = 8;
-
-  function renderGroupPhotos() {
-    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 4 of 7"]));
-    panel.appendChild(el("h2", { class: "step-title" }, ["Add everyone's photo"]));
-    panel.appendChild(el("p", { class: "step-sub" }, [
-      "Upload a clear photo of each person to include — one face per photo works best. Add up to " +
-        MAX_GROUP_PHOTOS +
-        ".",
-    ]));
-
-    const fileInput = el("input", {
-      type: "file",
-      accept: "image/*",
-      multiple: "multiple",
-      class: "visually-hidden",
-      id: "groupPhotoFileInput",
-    });
-
-    const box = el("div", { class: "upload-box" }, [
-      el("div", { class: "icon" }, ["👨‍👩‍👧‍👦"]),
-      el("p", {}, ["Tap here to add photos"]),
-      el("p", { class: "small" }, ["You can select multiple photos at once, or add them one at a time"]),
+    const [copy, suggestedMessage] = await Promise.all([
+      generateCopy({ occasion, relationship, recipientName, details, tone }),
+      generateSuggestedMessage({ occasion, relationship, recipientName, details, tone }),
     ]);
-    box.addEventListener("click", () => fileInput.click());
 
-    panel.appendChild(box);
-    panel.appendChild(fileInput);
-
-    const grid = el("div", { class: "group-photo-grid" });
-    panel.appendChild(grid);
-
-    const nav = navRow({ nextDisabled: state.groupPhotos.length === 0 });
-    panel.appendChild(nav);
-
-    function updateContinueState() {
-      nav.querySelector(".btn-primary").disabled = state.groupPhotos.length === 0;
-    }
-
-    function renderGrid() {
-      grid.innerHTML = "";
-      state.groupPhotos.forEach((photo, i) => {
-        const tile = el("div", { class: "group-photo-tile" }, [
-          el("img", { src: photo.dataUrl, alt: "Person " + (i + 1) }),
-          el("button", { class: "group-photo-remove", type: "button", title: "Remove" }, ["✕"]),
-        ]);
-        tile.querySelector("button").addEventListener("click", () => {
-          state.groupPhotos.splice(i, 1);
-          renderGrid();
-          updateContinueState();
-        });
-        grid.appendChild(tile);
-      });
-      if (state.groupPhotos.length >= MAX_GROUP_PHOTOS) {
-        box.classList.add("upload-box-disabled");
-      } else {
-        box.classList.remove("upload-box-disabled");
-      }
-    }
-    renderGrid();
-
-    fileInput.addEventListener("change", () => {
-      const files = Array.from(fileInput.files || []).slice(
-        0,
-        Math.max(0, MAX_GROUP_PHOTOS - state.groupPhotos.length)
-      );
-      if (!files.length) return;
-
-      Promise.all(
-        files.map(
-          (file) =>
-            new Promise((resolve) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result);
-              reader.readAsDataURL(file);
-            })
-        )
-      ).then((dataUrls) => {
-        dataUrls.forEach((dataUrl) => state.groupPhotos.push({ dataUrl }));
-        renderGrid();
-        updateContinueState();
-      });
-
-      fileInput.value = "";
+    const scenePrompt = buildScenePrompt({
+      occasion,
+      relationship,
+      recipientName,
+      details,
+      tone,
+      copy,
+      isGroup,
+      groupCount: photos.length,
     });
-  }
 
-  // ---------- Step 5: Generating (calls API) ----------
-  function renderGenerating() {
-    panel.appendChild(
-      el("div", { class: "loading-wrap" }, [
-        el("div", { class: "spinner" }),
-        el("h2", {}, ["Creating your card designs..."]),
-        el("p", {}, ["This usually takes about 20–30 seconds. Please don't close this page."]),
-      ])
+    const designResults = await Promise.allSettled(
+      STYLE_VARIANTS.map((styleDescriptor, i) =>
+        generateOneDesign({ prompt: scenePrompt, styleDescriptor, photos }).then((url) => ({
+          id: "design-" + i,
+          url,
+        }))
+      )
     );
 
-    const occasionLabel =
-      state.occasion === "other" ? state.occasionOther : OCCASIONS.find((o) => o.id === state.occasion).label;
-    const relationshipLabel =
-      state.relationship === "other"
-        ? state.relationshipOther
-        : RELATIONSHIPS.find((r) => r.id === state.relationship).label;
+    const designs = designResults.filter((r) => r.status === "fulfilled").map((r) => r.value);
 
-    const isGroup = state.relationship === "group";
-
-    fetch("/api/generate-cards", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        occasion: occasionLabel,
-        relationship: relationshipLabel,
-        recipientName: state.recipientName,
-        details: state.details,
-        tone: state.tone,
-        photoDataUrl: isGroup ? null : state.photoDataUrl,
-        groupPhotoDataUrls: isGroup ? state.groupPhotos.map((p) => p.dataUrl) : undefined,
-      }),
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error("Generation failed");
-        return r.json();
-      })
-      .then((data) => {
-        state.designs = data.designs || [];
-        state.message = data.suggestedMessage || "";
-        goTo(state.step + 1);
-      })
-      .catch(() => {
-        panel.innerHTML = "";
-        panel.appendChild(el("div", { class: "alert" }, [
-          "We had trouble creating your designs. Please try again — no charge has been made.",
-        ]));
-        const retry = el("button", { class: "btn btn-primary" }, ["Try Again"]);
-        retry.addEventListener("click", () => goTo(state.step));
-        panel.appendChild(retry);
-        const backBtn = el("button", { class: "btn btn-secondary", style: "margin-left:12px;" }, ["Back"]);
-        backBtn.addEventListener("click", back);
-        panel.appendChild(backBtn);
-      });
-  }
-
-  // ---------- Step 6: Pick a design ----------
-  function renderPickDesign() {
-    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 5 of 7"]));
-    panel.appendChild(el("h2", { class: "step-title" }, ["Pick your favorite"]));
-    panel.appendChild(el("p", { class: "step-sub" }, ["Tap a design to select it."]));
-
-    const grid = el("div", { class: "design-grid" });
-    (state.designs.length ? state.designs : placeholderDesigns()).forEach((d, i) => {
-      const opt = el(
-        "div",
-        { class: "design-option" + (state.selectedDesignId === d.id ? " selected" : "") },
-        [el("img", { src: d.url, alt: "Card design option " + (i + 1) }), el("div", { class: "label" }, ["Design " + (i + 1)])]
-      );
-      opt.addEventListener("click", () => {
-        state.selectedDesignId = d.id;
-        goTo(state.step);
-      });
-      grid.appendChild(opt);
-    });
-    panel.appendChild(grid);
-
-    panel.appendChild(navRow({ nextDisabled: !state.selectedDesignId }));
-  }
-
-  function placeholderDesigns() {
-    // Fallback so the flow is browsable before an image API key is configured.
-    return [1, 2, 3, 4].map((n) => ({ id: "placeholder-" + n, url: "assets/logo.png" }));
-  }
-
-  // ---------- Step 7: Customize message + size ----------
-  function renderCustomize() {
-    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 6 of 7"]));
-    panel.appendChild(el("h2", { class: "step-title" }, ["Make it yours"]));
-    panel.appendChild(el("p", { class: "step-sub" }, ["Edit the message inside, and choose your card style."]));
-
-    const design = (state.designs.length ? state.designs : placeholderDesigns()).find(
-      (d) => d.id === state.selectedDesignId
-    ) || placeholderDesigns()[0];
-
-    const layout = el("div", { class: "preview-layout" });
-
-    const mock = el("div", { class: "card-mock" }, [
-      el("img", { src: design.url, alt: "Your selected card design" }),
-    ]);
-    layout.appendChild(mock);
-
-    const formCol = el("div", {});
-    const msgField = el("div", { class: "field" }, [
-      el("label", {}, ["Your message inside the card"]),
-      el("textarea", { id: "msgInput" }, [state.message || ""]),
-    ]);
-    formCol.appendChild(msgField);
-    msgField.querySelector("textarea").addEventListener("input", (e) => {
-      state.message = e.target.value;
-    });
-
-    formCol.appendChild(el("div", { class: "field" }, [el("label", {}, ["Card size"])]));
-    const sizeRow = el("div", { class: "option-row" }, [
-      pill("Standard (5x7\")", state.cardSize === "standard", () => {
-        state.cardSize = "standard";
-        goTo(state.step);
-      }),
-      pill("Large (7x10\")", state.cardSize === "large", () => {
-        state.cardSize = "large";
-        goTo(state.step);
-      }),
-    ]);
-    formCol.appendChild(sizeRow);
-
-    formCol.appendChild(el("div", { class: "field", style: "margin-top:20px;" }, [el("label", {}, ["Finish"])]));
-    const finishRow = el("div", { class: "option-row" }, [
-      pill("Matte", state.finish === "matte", () => {
-        state.finish = "matte";
-        goTo(state.step);
-      }),
-      pill("Glossy (+$1.00)", state.finish === "glossy", () => {
-        state.finish = "glossy";
-        goTo(state.step);
-      }),
-    ]);
-    formCol.appendChild(finishRow);
-
-    const total = (CARD_PRICE[state.cardSize] + FINISH_ADD[state.finish]).toFixed(2);
-    formCol.appendChild(
-      el("div", { class: "price-row" }, [el("span", {}, ["Total"]), el("span", {}, ["$" + total])])
-    );
-
-    layout.appendChild(formCol);
-    panel.appendChild(layout);
-
-    panel.appendChild(navRow({ nextLabel: "Continue to Shipping & Payment", nextDisabled: !state.message.trim() }));
-  }
-
-  function pill(label, selected, onClick) {
-    const p = el("div", { class: "pill-choice" + (selected ? " selected" : "") }, [label]);
-    p.addEventListener("click", onClick);
-    return p;
-  }
-
-  // ---------- Step 8: Redirect to Stripe Checkout ----------
-  function renderCheckoutRedirect() {
-    panel.appendChild(
-      el("div", { class: "loading-wrap" }, [
-        el("div", { class: "spinner" }),
-        el("h2", {}, ["Taking you to secure checkout..."]),
-        el("p", {}, ["You'll enter your shipping address and payment on the next screen."]),
-      ])
-    );
-
-    const design = (state.designs.length ? state.designs : placeholderDesigns()).find(
-      (d) => d.id === state.selectedDesignId
-    ) || placeholderDesigns()[0];
-    const total = (CARD_PRICE[state.cardSize] + FINISH_ADD[state.finish]).toFixed(2);
-
-    fetch("/api/create-checkout-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        designUrl: design.url,
-        message: state.message,
-        cardSize: state.cardSize,
-        finish: state.finish,
-        amount: total,
-        recipientName: state.recipientName,
-        occasion: state.occasion === "other" ? state.occasionOther : state.occasion,
-      }),
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error("Checkout session failed");
-        return r.json();
-      })
-      .then((data) => {
-        if (data.url) window.location.href = data.url;
-        else throw new Error("No checkout URL returned");
-      })
-      .catch(() => {
-        panel.innerHTML = "";
-        panel.appendChild(
-          el("div", { class: "alert" }, ["We couldn't start checkout. Please try again — no charge has been made."])
-        );
-        const retry = el("button", { class: "btn btn-primary" }, ["Try Again"]);
-        retry.addEventListener("click", () => goTo(state.step));
-        panel.appendChild(retry);
-      });
-  }
-
-  // If arriving from an occasion-specific link (e.g. an ad landing on
-  // create.html?occasion=birthday), pre-select it and skip straight to
-  // step 2 so the customer isn't asked something we already know.
-  (function initFromQuery() {
-    const params = new URLSearchParams(window.location.search);
-    const requested = params.get("occasion");
-    if (requested && OCCASIONS.some((o) => o.id === requested)) {
-      state.occasion = requested;
-      goTo(1);
-    } else {
-      goTo(0);
+    if (designs.length === 0) {
+      res.status(502).json({ error: "We couldn't generate any designs this time. Please try again." });
+      return;
     }
-  })();
-})();
+
+    res.status(200).json({ designs, suggestedMessage, copy });
+  } catch (err) {
+    console.error("generate-cards error:", err);
+    res.status(500).json({ error: "Something went wrong generating your card designs. Please try again." });
+  }
+};

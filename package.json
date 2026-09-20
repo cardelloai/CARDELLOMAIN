@@ -1,0 +1,10 @@
+{
+  "name": "cardello",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cardello — AI-personalized greeting cards, custom-designed from a photo and shipped to your door.",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev"
+  }
+}

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shop by Occasion — Cardello</title>
+<meta name="description" content="Custom AI-designed greeting cards for every occasion — birthdays, anniversaries, holidays, sympathy, and more." />
+<link rel="icon" href="assets/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="container-wide">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.png" alt="Cardello" />
+    </a>
+    <nav class="main-nav">
+      <a href="occasions.html" class="active">Occasions</a>
+      <a href="index.html#how-it-works">How It Works</a>
+      <a href="about.html">About</a>
+      <a href="faq.html">FAQ</a>
+    </nav>
+    <div class="topbar-actions">
+      <a class="help-link" href="tel:+18005551234">Need help? Call us</a>
+      <a href="create.html" class="btn btn-primary" style="padding:12px 26px; font-size:17px; min-height:auto;">Start My Card</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="page-header">
+    <div class="container-wide">
+      <h1>A Card for Any Occasion</h1>
+      <p>Pick what fits — we'll guide you through the rest with a few simple questions.</p>
+    </div>
+  </div>
+
+  <div class="container-wide">
+    <div class="occasions-grid">
+      <a class="occasion-card" href="create.html?occasion=birthday">
+        <span class="emoji">🎂</span>
+        <h3>Birthday</h3>
+        <p>Celebrate another year around the sun</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=christmas">
+        <span class="emoji">🎄</span>
+        <h3>Christmas</h3>
+        <p>Warm, festive cards for the whole list</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=anniversary">
+        <span class="emoji">💍</span>
+        <h3>Anniversary</h3>
+        <p>For the couple who's been through it all</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=congratulations">
+        <span class="emoji">🎉</span>
+        <h3>Congratulations</h3>
+        <p>New job, graduation, big milestone</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=thank-you">
+        <span class="emoji">🙏</span>
+        <h3>Thank You</h3>
+        <p>Let someone know you appreciate them</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=get-well">
+        <span class="emoji">🌻</span>
+        <h3>Get Well Soon</h3>
+        <p>Brighten someone's recovery</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=sympathy">
+        <span class="emoji">🕊️</span>
+        <h3>Sympathy</h3>
+        <p>A gentle, heartfelt card for hard times</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=holiday">
+        <span class="emoji">🎆</span>
+        <h3>Other Holiday</h3>
+        <p>Hanukkah, New Year's &amp; more</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=new-baby">
+        <span class="emoji">👶</span>
+        <h3>New Baby</h3>
+        <p>Welcome the newest family member</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=wedding">
+        <span class="emoji">💐</span>
+        <h3>Wedding</h3>
+        <p>Congratulate the happy couple</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=retirement">
+        <span class="emoji">🌴</span>
+        <h3>Retirement</h3>
+        <p>Cheers to the next chapter</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=pet">
+        <span class="emoji">🐾</span>
+        <h3>Pet's Birthday</h3>
+        <p>Yes, your dog deserves a card too</p>
+      </a>
+      <a class="occasion-card" href="create.html?occasion=just-because">
+        <span class="emoji">💌</span>
+        <h3>Just Because</h3>
+        <p>No reason needed to make someone smile</p>
+      </a>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container-wide">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <img src="assets/logo.png" alt="Cardello" />
+        <p>AI-personalized greeting cards for any occasion — designed from your photo, printed, and mailed for you.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Shop</h4>
+        <a href="occasions.html">All Occasions</a>
+        <a href="create.html">Start My Card</a>
+      </div>
+      <div class="footer-col">
+        <h4>Support</h4>
+        <a href="faq.html">FAQ</a>
+        <a href="shipping.html">Shipping &amp; Returns</a>
+        <a href="contact.html">Contact Us</a>
+        <a href="about.html">About Cardello</a>
+      </div>
+    </div>
+    <div class="footer-bottom">&copy; <span id="year"></span> Cardello. All rights reserved.</div>
+  </div>
+</footer>
+
+<script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+</body>
+</html>

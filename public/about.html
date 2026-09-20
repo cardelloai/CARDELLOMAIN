@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>About Us — Cardello</title>
+<link rel="icon" href="assets/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="container-wide">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.png" alt="Cardello" />
+    </a>
+    <nav class="main-nav">
+      <a href="occasions.html">Occasions</a>
+      <a href="index.html#how-it-works">How It Works</a>
+      <a href="about.html" class="active">About</a>
+      <a href="faq.html">FAQ</a>
+    </nav>
+    <div class="topbar-actions">
+      <a class="help-link" href="tel:+18005551234">Need help? Call us</a>
+      <a href="create.html" class="btn btn-primary" style="padding:12px 26px; font-size:17px; min-height:auto;">Start My Card</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="page-header">
+    <div class="container-wide">
+      <h1>About Cardello</h1>
+      <p>A card that actually looks like the person you're sending it to.</p>
+    </div>
+  </div>
+
+  <div class="content-page">
+    <div class="container">
+      <h2>Why we started Cardello</h2>
+      <p>
+        Picking out a greeting card usually means standing in an aisle, reading
+        twenty cards that don't quite say what you mean, and settling for
+        "close enough." We thought there was a better way — one that starts
+        with the actual person you're celebrating, not a rack of generic designs.
+      </p>
+
+      <h2>How it works</h2>
+      <p>
+        You tell us a little about who the card is for and what makes them
+        special. You upload one photo of them. Our AI turns that photo into a
+        fun, custom illustration — your dad riding a reindeer, your grandma in
+        her garden, your dog at his own birthday party — and builds it into a
+        real greeting card. You pick your favorite design, add your message,
+        and we print it on real cardstock and mail it for you.
+      </p>
+
+      <h2>Who Cardello is for</h2>
+      <p>
+        Cardello was built to be simple enough for anyone — big buttons,
+        plain language, and one easy question at a time, whether you're
+        shopping from your phone or your computer.
+      </p>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container-wide">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <img src="assets/logo.png" alt="Cardello" />
+        <p>AI-personalized greeting cards for any occasion — designed from your photo, printed, and mailed for you.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Shop</h4>
+        <a href="occasions.html">All Occasions</a>
+        <a href="create.html">Start My Card</a>
+      </div>
+      <div class="footer-col">
+        <h4>Support</h4>
+        <a href="faq.html">FAQ</a>
+        <a href="shipping.html">Shipping &amp; Returns</a>
+        <a href="contact.html">Contact Us</a>
+        <a href="about.html">About Cardello</a>
+      </div>
+    </div>
+    <div class="footer-bottom">&copy; <span id="year"></span> Cardello. All rights reserved.</div>
+  </div>
+</footer>
+
+<script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+</body>
+</html>

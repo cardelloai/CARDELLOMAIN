@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cardello — AI-Personalized Greeting Cards, Made for the Person You Love</title>
+<meta name="description" content="Answer a few simple questions, upload a photo, and Cardello's AI creates a one-of-a-kind greeting card — printed and shipped right to your door." />
+<link rel="icon" href="assets/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="container-wide">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.png" alt="Cardello" />
+    </a>
+    <nav class="main-nav">
+      <a href="occasions.html">Occasions</a>
+      <a href="#how-it-works">How It Works</a>
+      <a href="about.html">About</a>
+      <a href="faq.html">FAQ</a>
+    </nav>
+    <div class="topbar-actions">
+      <a class="help-link" href="tel:+18005551234">Need help? Call us</a>
+      <a href="create.html" class="btn btn-primary" style="padding:12px 26px; font-size:17px; min-height:auto;">Start My Card</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="container hero-flex">
+      <div class="hero-copy">
+        <span class="eyebrow">A Real, Physical Card — Not a Digital Link</span>
+        <h1>A Card Made Just for Them —<br>Designed by AI, in Minutes</h1>
+        <p class="lead">Tell us who it's for. Upload a photo. Our AI creates a beautiful, custom card —
+          then we print it on real cardstock and mail it, so you don't have to.</p>
+        <a href="create.html" class="btn btn-primary">Start My Card</a>
+      </div>
+      <div class="hero-graphic" aria-hidden="true">
+        <svg viewBox="0 0 480 420" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="heroPhoto" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ec3f8f"/>
+              <stop offset="55%" stop-color="#7c3aed"/>
+              <stop offset="100%" stop-color="#3b82f6"/>
+            </linearGradient>
+            <linearGradient id="heroStamp" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#f9a13a"/>
+              <stop offset="100%" stop-color="#ec3f8f"/>
+            </linearGradient>
+            <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
+              <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#17151a" flood-opacity="0.18"/>
+            </filter>
+            <clipPath id="heroPhotoClip">
+              <rect x="212" y="112" width="156" height="120" rx="12"/>
+            </clipPath>
+          </defs>
+
+          <ellipse cx="245" cy="215" rx="215" ry="185" fill="#f7f4ef"/>
+
+          <circle cx="58" cy="78" r="7" fill="#f9a13a"/>
+          <circle cx="432" cy="118" r="6" fill="#3b82f6"/>
+          <circle cx="412" cy="332" r="8" fill="#ec3f8f"/>
+          <circle cx="48" cy="332" r="5" fill="#7c3aed"/>
+          <rect x="398" y="58" width="12" height="12" rx="3" fill="#7c3aed" transform="rotate(20 404 64)"/>
+          <rect x="28" y="228" width="10" height="10" rx="3" fill="#f9a13a" transform="rotate(-15 33 233)"/>
+          <path d="M235 34 l4 10 10 2 -8 7 2 10 -8 -6 -8 6 2 -10 -8 -7 10 -2 z" fill="#ec3f8f"/>
+
+          <g transform="rotate(-6 160 255)">
+            <rect x="40" y="180" width="240" height="150" rx="12" fill="#ffffff" stroke="#e9e5dc" stroke-width="2"/>
+            <path d="M40 192 L160 268 L280 192" stroke="#e9e5dc" stroke-width="2" fill="none"/>
+            <rect x="222" y="196" width="46" height="54" rx="4" fill="url(#heroStamp)"/>
+          </g>
+
+          <g transform="rotate(7 300 220)">
+            <rect x="190" y="90" width="200" height="260" rx="18" fill="#ffffff" stroke="#e9e5dc" stroke-width="2" filter="url(#cardShadow)"/>
+            <rect x="212" y="112" width="156" height="120" rx="12" fill="url(#heroPhoto)"/>
+            <path d="M312 148 l4 9 9 2 -7 6 2 9 -8 -5 -8 5 2 -9 -7 -6 9 -2 z" fill="#ffffff" opacity="0.9"/>
+            <rect x="212" y="248" width="120" height="10" rx="5" fill="#e9e5dc"/>
+            <rect x="212" y="266" width="90" height="10" rx="5" fill="#e9e5dc"/>
+            <rect x="212" y="284" width="60" height="10" rx="5" fill="#f0ede6"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section class="trust-bar">
+    <div class="container-wide trust-bar-inner">
+      <div class="trust-item"><span class="trust-icon">🔒</span> Secure Checkout</div>
+      <div class="trust-item"><span class="trust-icon">🖨️</span> Real Cardstock, Not a PDF</div>
+      <div class="trust-item"><span class="trust-icon">🚚</span> Ships in a Few Days</div>
+      <div class="trust-item"><span class="trust-icon">💯</span> Satisfaction Guaranteed</div>
+    </div>
+  </section>
+
+  <section class="how-it-works occasions-section">
+    <div class="container-wide">
+      <div class="occasions-heading">
+        <svg class="occasions-confetti" viewBox="0 0 200 60" aria-hidden="true">
+          <circle cx="14" cy="14" r="6" fill="#f9a13a"/>
+          <circle cx="186" cy="18" r="5" fill="#3b82f6"/>
+          <rect x="170" y="42" width="10" height="10" rx="3" fill="#ec3f8f" transform="rotate(18 175 47)"/>
+          <rect x="20" y="40" width="9" height="9" rx="3" fill="#7c3aed" transform="rotate(-12 24 44)"/>
+          <path d="M100 4 l3 8 8 2 -6 5 1 8 -6 -4 -6 4 1 -8 -6 -5 8 -2 z" fill="#ec3f8f"/>
+        </svg>
+        <h2>A Card for Any Occasion</h2>
+        <p class="section-sub">Tap an occasion to jump straight in — we'll ask the right questions for it.</p>
+      </div>
+      <div class="occasions-grid" style="padding: 20px 0 0;">
+        <a class="occasion-card" href="create.html?occasion=birthday"><span class="emoji-badge badge-pink"><span class="emoji">🎂</span></span><h3>Birthday</h3></a>
+        <a class="occasion-card" href="create.html?occasion=christmas"><span class="emoji-badge badge-blue"><span class="emoji">🎄</span></span><h3>Christmas</h3></a>
+        <a class="occasion-card" href="create.html?occasion=anniversary"><span class="emoji-badge badge-purple"><span class="emoji">💍</span></span><h3>Anniversary</h3></a>
+        <a class="occasion-card" href="create.html?occasion=congratulations"><span class="emoji-badge badge-orange"><span class="emoji">🎉</span></span><h3>Congratulations</h3></a>
+        <a class="occasion-card" href="create.html?occasion=thank-you"><span class="emoji-badge badge-pink"><span class="emoji">🙏</span></span><h3>Thank You</h3></a>
+        <a class="occasion-card" href="create.html?occasion=get-well"><span class="emoji-badge badge-orange"><span class="emoji">🌻</span></span><h3>Get Well Soon</h3></a>
+        <a class="occasion-card" href="create.html?occasion=sympathy"><span class="emoji-badge badge-blue"><span class="emoji">🕊️</span></span><h3>Sympathy</h3></a>
+        <a class="occasion-card" href="occasions.html"><span class="emoji-badge badge-purple"><span class="emoji">✨</span></span><h3>See All</h3></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="why-cardello">
+    <div class="container">
+      <h2>Why People Choose Cardello</h2>
+      <p class="section-sub">A card that actually feels like a gift — not an email.</p>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-icon">🎨</div>
+          <h3>Personalized by AI</h3>
+          <p>Every card is built around your photo and your story — never a generic template.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-icon">🖨️</div>
+          <h3>Real Cardstock</h3>
+          <p>Not a PDF, not a video link. Printed on thick, premium cardstock made to last.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-icon">📬</div>
+          <h3>Delivered to Their Door</h3>
+          <p>We handle the printing and the postage — you just make it, we mail it.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-icon">👍</div>
+          <h3>Simple. Anyone Can Do It.</h3>
+          <p>No design skills, no computer skills. If you can answer a few questions on your phone, you can make a Cardello card.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="showcase">
+    <div class="container">
+      <h2>Real Cards, Real Reactions</h2>
+      <p class="section-sub">A look at the kind of cards Cardello creates. More examples added as customers share theirs.</p>
+      <div class="showcase-grid showcase-grid-4">
+        <figure class="showcase-item">
+          <img src="assets/samples/dad-birthday-sample.jpg" alt="Example birthday card created with Cardello" />
+          <figcaption>Dad's Birthday Card</figcaption>
+        </figure>
+        <figure class="showcase-item">
+          <img src="assets/samples/christmas-family-sample.jpg" alt="Example Christmas card created with Cardello" />
+          <figcaption>Family Christmas Card</figcaption>
+        </figure>
+        <figure class="showcase-item">
+          <img src="assets/samples/grad-sample.jpg" alt="Example graduation congratulations card created with Cardello" />
+          <figcaption>Graduation Card</figcaption>
+        </figure>
+        <figure class="showcase-item">
+          <img src="assets/samples/retirement-sample.jpg" alt="Example retirement card created with Cardello" />
+          <figcaption>Retirement Card</figcaption>
+        </figure>
+        <figure class="showcase-item">
+          <img src="assets/samples/newhome-sample.jpg" alt="Example new home congratulations card created with Cardello" />
+          <figcaption>New Home Card</figcaption>
+        </figure>
+        <figure class="showcase-item">
+          <img src="assets/samples/wedding-sample.jpg" alt="Example wedding congratulations card created with Cardello" />
+          <figcaption>Wedding Card</figcaption>
+        </figure>
+        <figure class="showcase-item">
+          <img src="assets/samples/bachelor-sample.jpg" alt="Example bachelor party card created with Cardello" />
+          <figcaption>Bachelor Party Card</figcaption>
+        </figure>
+        <figure class="showcase-item">
+          <img src="assets/samples/newbaby-sample.jpg" alt="Example new baby congratulations card created with Cardello" />
+          <figcaption>New Baby Card</figcaption>
+        </figure>
+        <figure class="showcase-item">
+          <img src="assets/samples/newdriver-sample.jpg" alt="Example new driver congratulations card created with Cardello" />
+          <figcaption>New Driver Card</figcaption>
+        </figure>
+        <figure class="showcase-item">
+          <img src="assets/samples/divorce-sample.jpg" alt="Example just divorced congratulations card created with Cardello" />
+          <figcaption>Just Divorced Card</figcaption>
+        </figure>
+        <div class="showcase-item showcase-item-cta">
+          <span class="showcase-cta-icon">✨</span>
+          <p class="showcase-cta-text">Your card could be here next</p>
+          <a href="create.html" class="btn btn-primary">Make Yours Now</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="how-it-works how-it-works-section" id="how-it-works">
+    <div class="container">
+      <h2>How It Works</h2>
+      <p class="section-sub">You and our AI design the card together — then we print it and ship it.</p>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-num-wrap">
+            <div class="step-num">1</div>
+            <span class="step-num-logo">✍️</span>
+          </div>
+          <h3>Tell us about them</h3>
+          <p>The occasion, who they are to you, and what makes them special.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num-wrap">
+            <div class="step-num">2</div>
+            <span class="step-num-logo">📸</span>
+          </div>
+          <h3>Add a photo</h3>
+          <p>Upload one picture — our AI will turn it into fun, custom card art.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num-wrap">
+            <div class="step-num">3</div>
+            <span class="step-num-logo">💌</span>
+          </div>
+          <h3>Pick your favorite</h3>
+          <p>Choose from a few designs, add your message, and it's ready to go.</p>
+        </div>
+        <div class="step-card step-card-ship">
+          <div class="step-num-wrap">
+            <div class="step-num step-num-ship">4</div>
+            <span class="step-num-logo">📬</span>
+          </div>
+          <h3>We mail it for you</h3>
+          <p>Printed on real cardstock and shipped straight to your door.</p>
+        </div>
+      </div>
+      <div class="how-legend">
+        <span><span class="legend-dot"></span> You &amp; AI</span>
+        <span><span class="legend-dot legend-dot-ship"></span> We handle it</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="ideas-section">
+    <div class="container">
+      <div class="ideas-heading">
+        <svg class="occasions-confetti" viewBox="0 0 200 60" aria-hidden="true">
+          <circle cx="14" cy="14" r="6" fill="#3b82f6"/>
+          <circle cx="186" cy="18" r="5" fill="#f9a13a"/>
+          <rect x="170" y="42" width="10" height="10" rx="3" fill="#7c3aed" transform="rotate(18 175 47)"/>
+          <rect x="20" y="40" width="9" height="9" rx="3" fill="#ec3f8f" transform="rotate(-12 24 44)"/>
+          <path d="M100 4 l3 8 8 2 -6 5 1 8 -6 -4 -6 4 1 -8 -6 -5 8 -2 z" fill="#f9a13a"/>
+        </svg>
+        <h2>Need Some Inspiration?</h2>
+        <p class="section-sub">A few ideas to get you started — or just tell our AI what you're picturing.</p>
+      </div>
+      <div class="ideas-grid">
+        <div class="idea-card">
+          <span class="emoji-badge badge-pink"><span class="emoji">🎂</span></span>
+          <h3>Birthday</h3>
+          <p>"Dad on his fishing boat, reeling in another year of good times."</p>
+        </div>
+        <div class="idea-card">
+          <span class="emoji-badge badge-blue"><span class="emoji">🎄</span></span>
+          <h3>Christmas</h3>
+          <p>"The whole family — and the dog — in matching pajamas by the tree."</p>
+        </div>
+        <div class="idea-card">
+          <span class="emoji-badge badge-purple"><span class="emoji">💍</span></span>
+          <h3>Anniversary</h3>
+          <p>"Your wedding photo, reimagined as a vintage movie poster."</p>
+        </div>
+        <div class="idea-card">
+          <span class="emoji-badge badge-orange"><span class="emoji">🎉</span></span>
+          <h3>Congratulations</h3>
+          <p>"Their graduation photo turned into a bold 'They Did It!' poster."</p>
+        </div>
+        <div class="idea-card">
+          <span class="emoji-badge badge-pink"><span class="emoji">🙏</span></span>
+          <h3>Thank You</h3>
+          <p>"A photo of the two of you, captioned with your favorite memory."</p>
+        </div>
+        <div class="idea-card">
+          <span class="emoji-badge badge-orange"><span class="emoji">🐾</span></span>
+          <h3>Pet's Birthday</h3>
+          <p>"Your dog in a party hat — 'Best Boy Turns 3.'"</p>
+        </div>
+      </div>
+      <div class="ideas-cta">
+        <a href="create.html" class="btn btn-primary">Start My Card</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="reactions">
+    <div class="container">
+      <h2>The Reaction We're Going For</h2>
+      <p class="section-sub">This is the moment every Cardello card is designed to create.</p>
+      <div class="reactions-grid">
+        <div class="reaction-card">
+          <div class="reaction-emoji">😂</div>
+          <p class="reaction-quote">The surprised laugh when they see themselves in the illustration.</p>
+        </div>
+        <div class="reaction-card">
+          <div class="reaction-emoji">🥹</div>
+          <p class="reaction-quote">The quiet "wow, you really thought about this."</p>
+        </div>
+        <div class="reaction-card">
+          <div class="reaction-emoji">📌</div>
+          <p class="reaction-quote">The card that ends up pinned to the fridge, not the recycling bin.</p>
+        </div>
+      </div>
+      <p class="reactions-note">Real customer reviews will go here once Cardello starts shipping orders.</p>
+      <div class="reactions-cta">
+        <a href="create.html" class="btn btn-primary">Start My Card</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container-wide">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <img src="assets/logo.png" alt="Cardello" />
+        <p>AI-personalized greeting cards for any occasion — designed from your photo, printed, and mailed for you.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Shop</h4>
+        <a href="occasions.html">All Occasions</a>
+        <a href="create.html">Start My Card</a>
+      </div>
+      <div class="footer-col">
+        <h4>Support</h4>
+        <a href="faq.html">FAQ</a>
+        <a href="shipping.html">Shipping &amp; Returns</a>
+        <a href="contact.html">Contact Us</a>
+        <a href="about.html">About Cardello</a>
+      </div>
+    </div>
+    <div class="footer-bottom">&copy; <span id="year"></span> Cardello. All rights reserved.</div>
+  </div>
+</footer>
+
+<script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+</body>
+</html>

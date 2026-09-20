@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Create Your Card — Cardello</title>
+<link rel="icon" href="assets/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="container-wide">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.png" alt="Cardello" />
+    </a>
+    <nav class="main-nav">
+      <a href="occasions.html">Occasions</a>
+      <a href="index.html#how-it-works">How It Works</a>
+      <a href="about.html">About</a>
+      <a href="faq.html">FAQ</a>
+    </nav>
+    <div class="topbar-actions">
+      <a class="help-link" href="tel:+18005551234">Need help? Call us</a>
+    </div>
+  </div>
+</header>
+
+<main class="wizard-wrap">
+  <div class="container">
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="card-panel" id="stepPanel">
+      <!-- steps are rendered here by app.js -->
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container-wide">
+    <div class="footer-bottom">&copy; <span id="year"></span> Cardello. All rights reserved.</div>
+  </div>
+</footer>
+
+<script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+<script src="app.js"></script>
+</body>
+</html>

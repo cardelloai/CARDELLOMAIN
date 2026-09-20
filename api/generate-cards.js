@@ -299,4 +299,6 @@ module.exports = async (req, res) => {
     res.status(200).json({ designs, suggestedMessage, copy });
   } catch (err) {
     console.error("generate-cards error:", err);
-    res.status(500).json({ error: "Something went wrong generating your card designs.
+    res.status(500).json({ error: "Something went wrong generating your card designs. Please try again." });
+  }
+};

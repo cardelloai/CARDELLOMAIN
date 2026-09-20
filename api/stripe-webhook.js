@@ -2,15 +2,17 @@
  * POST /api/stripe-webhook
  *
  * Listens for Stripe's `checkout.session.completed` event and emails you
- * (the shop owner) the finished order — the card design image, the
- * customer's message, and their shipping address — so you can print it on
- * your own printer and mail it yourself. This is the self-fulfillment path;
- * there's no automatic print-on-demand step here.
+ * (the shop owner) the finished order — a print-ready PDF (front cover
+ * design on page 1, the customer's message centered on a plain background
+ * on page 2, sized to the card size they picked), plus the shipping address
+ * — so you can print it on your own printer, fold it, and mail it yourself.
+ * This is the self-fulfillment path; there's no automatic print-on-demand
+ * step here.
  *
  * Verifies the Stripe signature by hand (HMAC-SHA256 via Node's built-in
  * `crypto`), so no `stripe` npm package is required to deploy this.
  * Sends email via Resend's REST API directly (plain fetch), so no `resend`
- * npm package is required either.
+ * npm package is required either. Builds the print-ready PDF with `pdf-lib`.
  *
  * Required env vars:
  *   STRIPE_WEBHOOK_SECRET — from your Stripe Dashboard webhook endpoint
@@ -29,6 +31,92 @@
  */
 
 const crypto = require("crypto");
+const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
+
+// Card sizes in PDF points at 72 DPI (matches the sizes offered at checkout).
+const CARD_DIMENSIONS = {
+  standard: { width: 360, height: 504 }, // 5x7"
+  large: { width: 504, height: 720 }, // 7x10"
+};
+
+function wrapText(text, font, fontSize, maxWidth) {
+  const paragraphs = String(text || "").split(/\n+/);
+  const lines = [];
+  paragraphs.forEach((paragraph) => {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    let current = "";
+    words.forEach((word) => {
+      const candidate = current ? `${current} ${word}` : word;
+      if (font.widthOfTextAtSize(candidate, fontSize) > maxWidth && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = candidate;
+      }
+    });
+    lines.push(current);
+  });
+  return lines;
+}
+
+/** Builds a print-ready PDF: page 1 is the front cover design, page 2 is
+ *  the customer's message centered on a plain cream background. Returns
+ *  the PDF as a Buffer, or null if the design image couldn't be fetched. */
+async function buildPrintPdf({ designUrl, message, cardSize }) {
+  const dims = CARD_DIMENSIONS[cardSize] || CARD_DIMENSIONS.standard;
+  const pdfDoc = await PDFDocument.create();
+
+  // Page 1: front cover design.
+  if (designUrl) {
+    try {
+      const imgResp = await fetch(designUrl);
+      if (imgResp.ok) {
+        const contentType = imgResp.headers.get("content-type") || "";
+        const imgBytes = Buffer.from(await imgResp.arrayBuffer());
+        const image = contentType.includes("png")
+          ? await pdfDoc.embedPng(imgBytes)
+          : await pdfDoc.embedJpg(imgBytes);
+        const page1 = pdfDoc.addPage([dims.width, dims.height]);
+        page1.drawImage(image, { x: 0, y: 0, width: dims.width, height: dims.height });
+      }
+    } catch (err) {
+      console.error("Could not embed design image into PDF:", err);
+    }
+  }
+
+  // Page 2: the message, centered on a plain cream background.
+  const page2 = pdfDoc.addPage([dims.width, dims.height]);
+  page2.drawRectangle({
+    x: 0,
+    y: 0,
+    width: dims.width,
+    height: dims.height,
+    color: rgb(0.98, 0.97, 0.94),
+  });
+
+  const font = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+  const fontSize = 16;
+  const lineHeight = fontSize + 8;
+  const margin = 48;
+  const maxWidth = dims.width - margin * 2;
+  const lines = wrapText(message || "", font, fontSize, maxWidth);
+
+  let y = dims.height / 2 + (lines.length * lineHeight) / 2 - lineHeight / 2;
+  lines.forEach((line) => {
+    const textWidth = font.widthOfTextAtSize(line, fontSize);
+    page2.drawText(line, {
+      x: (dims.width - textWidth) / 2,
+      y,
+      size: fontSize,
+      font,
+      color: rgb(0.15, 0.15, 0.15),
+    });
+    y -= lineHeight;
+  });
+
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
+}
 
 function verifyStripeSignature(rawBody, signatureHeader, secret) {
   if (!signatureHeader) return false;
@@ -99,7 +187,7 @@ async function sendOrderNotificationEmail(session) {
     <p style="white-space: pre-wrap; border-left: 3px solid #ccc; padding-left: 12px;">${escapeHtml(
       meta.message || ""
     )}</p>
-    <h3>Card design</h3>
+    <h3>Card design (front cover)</h3>
     ${
       meta.designUrl
         ? `<p><a href="${escapeHtml(meta.designUrl)}">${escapeHtml(meta.designUrl)}</a></p>
@@ -108,8 +196,29 @@ async function sendOrderNotificationEmail(session) {
             session.id
           )}.</em></p>`
     }
+    <p><strong>📎 A print-ready PDF is attached to this email</strong> — page 1 is the front cover, page 2 is the
+      message, both sized for a ${escapeHtml(meta.cardSize || "standard")} card. Just print, fold, and mail.</p>
     <p style="color:#888; font-size:12px;">Stripe session: ${escapeHtml(session.id)}</p>
   `;
+
+  let attachments;
+  try {
+    const pdfBuffer = await buildPrintPdf({
+      designUrl: meta.designUrl,
+      message: meta.message,
+      cardSize: meta.cardSize,
+    });
+    if (pdfBuffer) {
+      attachments = [
+        {
+          filename: `cardello-order-${session.id}.pdf`,
+          content: pdfBuffer.toString("base64"),
+        },
+      ];
+    }
+  } catch (err) {
+    console.error("Could not build print-ready PDF for session", session.id, err);
+  }
 
   const resp = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -122,6 +231,7 @@ async function sendOrderNotificationEmail(session) {
       to: [process.env.NOTIFY_EMAIL],
       subject: `New order — ${meta.occasion || "Cardello card"} for ${meta.recipientName || "a customer"}`,
       html,
+      ...(attachments ? { attachments } : {}),
     }),
   });
 

@@ -1,20 +1,26 @@
 /**
  * POST /api/stripe-webhook
  *
- * Listens for Stripe's `checkout.session.completed` event and places the
- * print order with a print-on-demand partner (Prodigi by default) so the
- * card actually gets printed and shipped — no manual step required.
+ * Listens for Stripe's `checkout.session.completed` event and emails you
+ * (the shop owner) the finished order — the card design image, the
+ * customer's message, and their shipping address — so you can print it on
+ * your own printer and mail it yourself. This is the self-fulfillment path;
+ * there's no automatic print-on-demand step here.
  *
  * Verifies the Stripe signature by hand (HMAC-SHA256 via Node's built-in
  * `crypto`), so no `stripe` npm package is required to deploy this.
+ * Sends email via Resend's REST API directly (plain fetch), so no `resend`
+ * npm package is required either.
  *
  * Required env vars:
  *   STRIPE_WEBHOOK_SECRET — from your Stripe Dashboard webhook endpoint
- *   PRODIGI_API_KEY       — from your Prodigi account
- *   PRODIGI_SKU           — the Prodigi product SKU for your card stock/size
- *                            (set up one SKU per size in Prodigi and branch
- *                            on metadata.cardSize below if you offer more
- *                            than one)
+ *   RESEND_API_KEY        — from resend.com (free tier is plenty for this)
+ *   NOTIFY_EMAIL           — the email address YOU want new orders sent to
+ *   NOTIFY_FROM_EMAIL      — optional; defaults to Resend's shared sending
+ *                            address (onboarding@resend.dev), which needs no
+ *                            setup. Use your own domain here once you've
+ *                            verified it in Resend, for a more professional
+ *                            "from" address.
  *
  * IMPORTANT: this handler needs the RAW request body to verify the Stripe
  * signature, so body parsing is disabled for this route via the
@@ -54,51 +60,74 @@ function readRawBody(req) {
   });
 }
 
-async function placePrintOrder(session) {
+function escapeHtml(str) {
+  return String(str || "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
+async function sendOrderNotificationEmail(session) {
   const meta = session.metadata || {};
   const shipping = session.shipping_details || session.customer_details || {};
-  const address = (shipping.address || {});
+  const address = shipping.address || {};
+  const customerEmail = session.customer_details?.email || "";
+  const customerName = shipping.name || session.customer_details?.name || "Customer";
 
-  const orderPayload = {
-    shippingMethod: "Standard",
-    recipient: {
-      name: shipping.name || session.customer_details?.name || "Customer",
-      address: {
-        line1: address.line1,
-        line2: address.line2 || "",
-        postalOrZipCode: address.postal_code,
-        countryCode: address.country,
-        townOrCity: address.city,
-        stateOrCounty: address.state || "",
-      },
-    },
-    items: [
-      {
-        sku: process.env.PRODIGI_SKU || "GLOBAL-CARD-5x7",
-        copies: 1,
-        assets: [{ printArea: "default", url: meta.designUrl }],
-        recipientCustomText: meta.message || "",
-      },
-    ],
-    metadata: {
-      cardelloSessionId: session.id,
-      occasion: meta.occasion || "",
-      recipientName: meta.recipientName || "",
-    },
-  };
+  const addressLines = [
+    address.line1,
+    address.line2,
+    [address.city, address.state, address.postal_code].filter(Boolean).join(", "),
+    address.country,
+  ]
+    .filter(Boolean)
+    .join("<br>");
 
-  const resp = await fetch("https://api.prodigi.com/v4.0/Orders", {
+  const amountDisplay = session.amount_total != null ? `$${(session.amount_total / 100).toFixed(2)}` : "";
+
+  const html = `
+    <h2>New Cardello order 🎉</h2>
+    <p><strong>Total paid:</strong> ${escapeHtml(amountDisplay)}</p>
+    <p><strong>Occasion:</strong> ${escapeHtml(meta.occasion || "")}</p>
+    <p><strong>Card size / finish:</strong> ${escapeHtml(meta.cardSize || "standard")} / ${escapeHtml(
+    meta.finish || "matte"
+  )}</p>
+    <p><strong>Recipient name (as told to us):</strong> ${escapeHtml(meta.recipientName || "")}</p>
+    <h3>Ship to</h3>
+    <p>${escapeHtml(customerName)}<br>${addressLines}</p>
+    <p><strong>Customer email (for questions):</strong> ${escapeHtml(customerEmail)}</p>
+    <h3>Message to print inside the card</h3>
+    <p style="white-space: pre-wrap; border-left: 3px solid #ccc; padding-left: 12px;">${escapeHtml(
+      meta.message || ""
+    )}</p>
+    <h3>Card design</h3>
+    ${
+      meta.designUrl
+        ? `<p><a href="${escapeHtml(meta.designUrl)}">${escapeHtml(meta.designUrl)}</a></p>
+           <img src="${escapeHtml(meta.designUrl)}" alt="Card design" style="max-width:400px; border:1px solid #ddd;" />`
+        : `<p><em>No design image URL was saved for this order — check the Stripe dashboard for session ${escapeHtml(
+            session.id
+          )}.</em></p>`
+    }
+    <p style="color:#888; font-size:12px;">Stripe session: ${escapeHtml(session.id)}</p>
+  `;
+
+  const resp = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
-      "X-API-Key": process.env.PRODIGI_API_KEY,
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(orderPayload),
+    body: JSON.stringify({
+      from: process.env.NOTIFY_FROM_EMAIL || "Cardello Orders <onboarding@resend.dev>",
+      to: [process.env.NOTIFY_EMAIL],
+      subject: `New order — ${meta.occasion || "Cardello card"} for ${meta.recipientName || "a customer"}`,
+      html,
+    }),
   });
 
   if (!resp.ok) {
     const errText = await resp.text();
-    throw new Error(`Prodigi order failed: ${resp.status} ${errText}`);
+    throw new Error(`Order notification email failed: ${resp.status} ${errText}`);
   }
 
   return resp.json();
@@ -136,15 +165,18 @@ module.exports = async (req, res) => {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
     try {
-      if (process.env.PRODIGI_API_KEY) {
-        await placePrintOrder(session);
+      if (process.env.RESEND_API_KEY && process.env.NOTIFY_EMAIL) {
+        await sendOrderNotificationEmail(session);
       } else {
-        console.warn("PRODIGI_API_KEY not set — skipping print order for session", session.id);
+        console.warn(
+          "RESEND_API_KEY or NOTIFY_EMAIL not set — skipping order notification email for session",
+          session.id
+        );
       }
     } catch (err) {
-      console.error("Fulfillment error for session", session.id, err);
-      // Respond 200 anyway so Stripe doesn't retry into a duplicate order;
-      // alert yourself out-of-band (e.g. log monitoring, email) on this path.
+      console.error("Order notification error for session", session.id, err);
+      // Respond 200 anyway so Stripe doesn't retry into a duplicate email;
+      // check Vercel's function logs if an order's email doesn't arrive.
     }
   }
 

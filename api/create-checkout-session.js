@@ -28,7 +28,16 @@ function toFormBody(obj, prefix) {
   for (const key in obj) {
     const value = obj[key];
     const fullKey = prefix ? `${prefix}[${key}]` : key;
-    if (value && typeof value === "object" && !Array.isArray(value)) {
+    if (Array.isArray(value)) {
+      value.forEach((item, i) => {
+        const indexedKey = `${fullKey}[${i}]`;
+        if (item && typeof item === "object") {
+          parts.push(toFormBody(item, indexedKey));
+        } else {
+          parts.push(`${encodeURIComponent(indexedKey)}=${encodeURIComponent(item)}`);
+        }
+      });
+    } else if (value && typeof value === "object") {
       parts.push(toFormBody(value, fullKey));
     } else {
       parts.push(`${encodeURIComponent(fullKey)}=${encodeURIComponent(value)}`);

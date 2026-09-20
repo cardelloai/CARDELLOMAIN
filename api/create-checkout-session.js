@@ -9,14 +9,19 @@
  *
  * Required env vars:
  *   STRIPE_SECRET_KEY   — your Stripe secret key (sk_live_... or sk_test_...)
- *   PUBLIC_SITE_URL     — e.g. https://cardello.com (used for redirect URLs)
+ *   PUBLIC_SITE_URL     — e.g. https://cardello.ca (used for redirect URLs)
+ *   BLOB_READ_WRITE_TOKEN — auto-set when you enable Vercel Blob storage on
+ *                            this project (Storage tab in the Vercel dashboard)
  *
- * The finished card design (image + message) is stored on the session as
- * metadata so the webhook can hand it to the print fulfillment step once
- * payment succeeds. Stripe metadata values are capped at 500 characters —
- * for production, store the full design in a database/object storage and
- * pass a short reference id here instead of the raw data URL.
+ * The finished card design is a big base64 image, and Stripe metadata values
+ * are capped at 500 characters — far too small to hold it. So before
+ * creating the checkout session, we upload the chosen design image to
+ * Vercel Blob storage and only put its short public URL in Stripe metadata.
+ * The webhook (api/stripe-webhook.js) reads that URL back out once payment
+ * succeeds, so you get a working image link in your order-notification email.
  */
+
+const { put } = require("@vercel/blob");
 
 function toFormBody(obj, prefix) {
   const parts = [];
@@ -58,6 +63,27 @@ module.exports = async (req, res) => {
       finish === "glossy" ? "Glossy" : "Matte"
     } finish`;
 
+    // Upload the chosen design to storage and use its short URL instead of
+    // the raw (huge) base64 image, which would get truncated by Stripe's
+    // 500-character metadata limit.
+    let hostedDesignUrl = designUrl;
+    const dataUrlMatch = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(designUrl || "");
+    if (dataUrlMatch && process.env.BLOB_READ_WRITE_TOKEN) {
+      const [, mimeType, base64] = dataUrlMatch;
+      const ext = mimeType.split("/")[1] || "png";
+      const buffer = Buffer.from(base64, "base64");
+      const blob = await put(`cardello-orders/${Date.now()}-design.${ext}`, buffer, {
+        access: "public",
+        contentType: mimeType,
+      });
+      hostedDesignUrl = blob.url;
+    } else if (dataUrlMatch && !process.env.BLOB_READ_WRITE_TOKEN) {
+      console.warn(
+        "BLOB_READ_WRITE_TOKEN not set — design image will not survive into the order email. " +
+          "Enable Vercel Blob storage on this project to fix this."
+      );
+    }
+
     const params = {
       mode: "payment",
       success_url: `${siteUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
@@ -80,9 +106,7 @@ module.exports = async (req, res) => {
         cardSize: cardSize || "standard",
         finish: finish || "matte",
         message: (message || "").slice(0, 480),
-        // NOTE: data-URL images are long; Stripe metadata values cap at 500 chars.
-        // In production, upload the design to storage first and put its URL here instead.
-        designUrl: (designUrl || "").slice(0, 480),
+        designUrl: (hostedDesignUrl || "").slice(0, 480),
       },
     };
 

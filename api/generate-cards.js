@@ -12,9 +12,7 @@
  *
  * This happens in two steps:
  *   1. Ask a text model to write the exact headline / subheading / caption
- *      copy, personalized from the customer's answers — and to dream up a
- *      big, silly, literal scene concept (for the "Funny" tone) or a warm,
- *      natural one (for other tones).
+ *      copy, personalized from the customer's answers.
  *   2. Ask an image model to render a photorealistic scene around the
  *      uploaded photo with that exact copy as bold poster typography.
  *
@@ -55,16 +53,24 @@ async function generateCopy({ occasion, relationship, recipientName, details, to
 
   const sceneInstruction = isFunny
     ? `- "sceneIdea": ONE vivid sentence describing a big, silly, LITERALLY exaggerated action scene that combines ` +
-      `the occasion and what the customer told us about them. Take their interest and blow it up to an absurd, ` +
-      `larger-than-life scale — don't just show them doing the hobby normally, put them INSIDE an over-the-top ` +
-      `version of it. Examples of the style we want: if it's Christmas, "riding a giant reindeer through a snowy ` +
-      `night sky like Santa, sack of presents flying behind them"; if they love fishing and beer, "riding on the ` +
-      `back of a massive leaping fish through a lake, a frosty beer held high in one hand, sunglasses on, huge grin"; ` +
-      `if they love golf, "swinging a golf club the size of a telephone pole, ball rocketing past the moon". Be ` +
-      `genuinely funny and visual, not just a normal photo of the activity — the sillier and more literal, the better.`
-    : `- "sceneIdea": ONE sentence describing a warm, natural scene that ties the occasion to what the customer told ` +
-      `us about them (their hobby, interest, or what makes them special), staged like a nice, personal photograph — ` +
-      `not absurd, just thoughtful and specific to them.`;
+      `TWO things at once: (1) unmistakable visual symbols of the "${occasion || "special"}" occasion itself — ` +
+      `for Christmas that means snow, a Christmas tree, string lights, ornaments, a Santa hat, wrapping paper, etc; ` +
+      `for a Birthday that means balloons, confetti, a giant birthday cake, candles, streamers; for an Anniversary ` +
+      `that means hearts, rose petals, champagne; for a New Baby that means baby blocks, a giant rattle, storks; ` +
+      `pick whatever visual symbols genuinely fit "${occasion || "special"}" — AND (2) what the customer told us ` +
+      `about them. Take their interest and blow it up to an absurd, larger-than-life scale, staged right in the ` +
+      `middle of the occasion's world — don't just show them doing the hobby normally in a blank space, and don't ` +
+      `just show occasion decorations with no connection to them either; fuse both together in one scene. Examples ` +
+      `of the style we want: for Christmas + someone who loves fishing and beer, "riding a massive leaping fish ` +
+      `through a snowy, string-lit winter lake, a frosty beer held high, wearing a Santa hat, Christmas tree ` +
+      `ornaments hanging off the fish's fins"; for a Birthday + someone who loves golf, "swinging a golf club the ` +
+      `size of a telephone pole next to a towering birthday cake covered in candles, confetti and balloons exploding ` +
+      `everywhere, the ball rocketing past the moon". Be genuinely funny and visual, not just a normal photo of the ` +
+      `activity — the sillier, more literal, and more packed with occasion detail, the better.`
+    : `- "sceneIdea": ONE sentence describing a warm, natural scene that combines recognizable visual details of the ` +
+      `"${occasion || "special"}" occasion (fitting decorations, setting, or symbols for that occasion) with what the ` +
+      `customer told us about them (their hobby, interest, or what makes them special), staged like a nice, personal ` +
+      `photograph — not absurd, just thoughtful, specific to them, and clearly set within that occasion.`;
 
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -85,9 +91,12 @@ async function generateCopy({ occasion, relationship, recipientName, details, to
             `What the customer told us about them: "${details || "no extra details given"}". ` +
             `Return strict JSON with these fields:\n` +
             sceneInstruction +
-            `\n- "headline": a short, punchy 2-5 word headline like a card shop cover would have (e.g. "Happy Birthday!"). Keep it under 25 characters.\n` +
+            `\n- "headline": a short, punchy 2-5 word headline like a card shop cover would have. It MUST clearly ` +
+            `name or reference the occasion itself, the way a real card would — e.g. for Birthday: "Happy Birthday!"; ` +
+            `for Christmas: "Merry Christmas!"; for Anniversary: "Happy Anniversary!"; for Congratulations: ` +
+            `"Congratulations!"; adapt naturally for whatever the occasion is. Keep it under 25 characters.\n` +
             `- "subheading": one short punchy line (under 60 characters) personalized to them.\n` +
-            `- "captions": an array of exactly 4 very short prop/sign labels (2-4 words each, ALL CAPS, like novelty-card callouts — e.g. "GRILL CHILL REPEAT", "BEST BUDDY ALWAYS") that riff on the details given and the scene. If no specific interests were given, make them generic but fitting the occasion.\n` +
+            `- "captions": an array of exactly 4 very short prop/sign labels (2-4 words each, ALL CAPS, like novelty-card callouts — e.g. "GRILL CHILL REPEAT", "BEST BUDDY ALWAYS") that riff on the details given and the scene, mixing in occasion-flavored words where natural. If no specific interests were given, make them generic but fitting the occasion.\n` +
             `Keep every string short — these get rendered as typography on an image, so brevity matters. No emoji.`,
         },
       ],
@@ -144,8 +153,11 @@ function buildScenePrompt({ occasion, relationship, recipientName, details, tone
     ? isFunny
       ? `THE SCENE (most important part — commit to this fully): ${copy.sceneIdea}. Really sell the scale and the ` +
         `joke — exaggerated proportions, dynamic action pose, a big goofy grin, dramatic lighting like a movie ` +
-        `poster. This should look genuinely funny and larger-than-life, not like a normal posed photo.`
-      : `THE SCENE: ${copy.sceneIdea}. Keep it natural, warm, and true to life.`
+        `poster. Make sure the "${occasion || "special"}" occasion is unmistakable at a glance — its decorations, ` +
+        `colors, and iconic props should fill the background and surround the subject, not just be hinted at. This ` +
+        `should look genuinely funny and larger-than-life, not like a normal posed photo.`
+      : `THE SCENE: ${copy.sceneIdea}. Keep it natural, warm, and true to life, while making the "${occasion || "special"}" ` +
+        `occasion clearly recognizable through its setting, decorations, or props.`
     : `Stage them in a fun, realistic photo scene fitting the occasion and their interests, with props ` +
       `and background details relevant to what was said about them.`;
 

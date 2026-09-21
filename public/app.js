@@ -1,1058 +1,684 @@
-/* Cardello — editorial, minimal-color visual system.
-   Calm cream/white background, near-black type, a single confident
-   accent color used sparingly (buttons stay solid ink; the pink→purple→
-   blue gradient is reserved for small brand touches only — step numbers,
-   a progress bar — not backgrounds or big blocks). */
-:root {
-  --ink: #17151a;
-  --ink-soft: #5c5762;
-  --paper: #ffffff;
-  --paper-soft: #f7f4ef;
-  --line: #e9e5dc;
-  --pink: #ec3f8f;
-  --purple: #7c3aed;
-  --blue: #3b82f6;
-  --orange: #f9a13a;
-  --accent: var(--purple);
-  --gradient: linear-gradient(120deg, var(--pink), var(--purple) 55%, var(--blue));
-  --gradient-warm: linear-gradient(120deg, var(--orange), var(--pink));
-  --success: #1c9a5b;
-  --error: #d33a3a;
-  --radius: 18px;
-  --shadow: 0 10px 28px rgba(23, 21, 26, 0.08);
-  --shadow-lg: 0 20px 48px rgba(23, 21, 26, 0.14);
-  --font-heading: "Poppins", "Segoe UI", Avenir, "Helvetica Neue", Arial, sans-serif;
-  --font-body: "Inter", "Segoe UI", Avenir, "Helvetica Neue", Arial, sans-serif;
-}
+/* Cardello — guided card-creation wizard
+   Plain JS, no build step. Talks to /api/* serverless functions. */
 
-* { box-sizing: border-box; }
+(function () {
+  "use strict";
 
-html { scroll-behavior: smooth; }
+  const state = {
+    step: 0,
+    occasion: null,
+    occasionOther: "",
+    relationship: null,
+    relationshipOther: "",
+    recipientName: "",
+    details: "",
+    tone: null,
+    photoDataUrl: null,
+    photoFile: null,
+    groupPhotos: [],       // [{dataUrl, name}] — used when relationship === "group"
+    designs: [],           // [{id, url}]
+    selectedDesignId: null,
+    message: "",
+    cardSize: "standard",  // standard | large
+    finish: "matte",       // matte | glossy
+  };
 
-body {
-  margin: 0;
-  font-family: var(--font-body);
-  background: var(--paper-soft);
-  color: var(--ink);
-  font-size: 19px;
-  line-height: 1.6;
-}
+  const OCCASIONS = [
+    { id: "birthday", label: "Birthday", emoji: "🎂" },
+    { id: "christmas", label: "Christmas", emoji: "🎄" },
+    { id: "anniversary", label: "Anniversary", emoji: "💍" },
+    { id: "congratulations", label: "Congratulations", emoji: "🎉" },
+    { id: "thank-you", label: "Thank You", emoji: "🙏" },
+    { id: "get-well", label: "Get Well Soon", emoji: "🌻" },
+    { id: "sympathy", label: "Sympathy", emoji: "🕊️" },
+    { id: "holiday", label: "Other Holiday", emoji: "🎆" },
+    { id: "new-baby", label: "New Baby", emoji: "👶" },
+    { id: "wedding", label: "Wedding", emoji: "💐" },
+    { id: "retirement", label: "Retirement", emoji: "🌴" },
+    { id: "pet", label: "Pet's Birthday", emoji: "🐾" },
+    { id: "just-because", label: "Just Because", emoji: "💌" },
+    { id: "other", label: "Something Else", emoji: "✨" },
+  ];
 
-h1, h2, h3, h4, .btn, .step-num, .occasion-card h3 {
-  font-family: var(--font-heading);
-}
-h1, h2, h3, h4 { font-weight: 700; letter-spacing: -0.01em; }
+  const RELATIONSHIPS = [
+    { id: "mom", label: "My Mom", emoji: "👩" },
+    { id: "dad", label: "My Dad", emoji: "👨" },
+    { id: "spouse", label: "My Spouse / Partner", emoji: "💑" },
+    { id: "grandparent", label: "My Grandparent", emoji: "👵" },
+    { id: "child", label: "My Son / Daughter", emoji: "🧒" },
+    { id: "sibling", label: "My Sibling", emoji: "👫" },
+    { id: "friend", label: "A Friend", emoji: "🤝" },
+    { id: "group", label: "Family or Friends (Group)", emoji: "👨‍👩‍👧‍👦" },
+    { id: "other", label: "Someone Else", emoji: "❤️" },
+  ];
 
-.eyebrow {
-  display: inline-block;
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 15px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin: 0 0 16px;
-}
+  const TONES = [
+    { id: "funny", label: "Funny & Playful", emoji: "😄" },
+    { id: "heartfelt", label: "Heartfelt & Warm", emoji: "🥰" },
+    { id: "elegant", label: "Elegant & Classic", emoji: "🌹" },
+  ];
 
-img { max-width: 100%; display: block; }
+  const CARD_PRICE = { standard: 16.99, large: 22.99 };
+  const FINISH_ADD = { matte: 0, glossy: 2.0 };
 
-.container {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-.container-wide {
-  max-width: 1160px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-
-/* ---------- Top bar ---------- */
-.topbar {
-  background: var(--paper);
-  padding: 16px 0;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  box-shadow: 0 2px 16px rgba(27, 26, 31, 0.06);
-}
-.topbar .container-wide {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-}
-.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; flex-shrink: 0; }
-.brand img { height: 40px; width: auto; }
-.help-link {
-  color: var(--purple);
-  font-weight: 600;
-  text-decoration: none;
-  font-size: 17px;
-  white-space: nowrap;
-}
-.main-nav {
-  display: flex;
-  align-items: center;
-  gap: 30px;
-  flex: 1;
-  justify-content: center;
-}
-.main-nav a {
-  color: var(--ink);
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 18px;
-}
-.main-nav a:hover, .main-nav a.active { color: var(--purple); }
-.topbar-actions { display: flex; align-items: center; gap: 22px; flex-shrink: 0; }
-.nav-toggle { display: none; }
-@media (max-width: 860px) {
-  .main-nav { display: none; }
-  .help-link { display: none; }
-}
-
-/* ---------- Breadcrumb / page header for inner pages ---------- */
-.page-header {
-  background: var(--paper-soft);
-  padding: 48px 0 40px;
-  text-align: center;
-  border-bottom: 1px solid var(--line);
-}
-.page-header h1 { font-size: 38px; margin: 0 0 12px; }
-.page-header p { font-size: 20px; color: #5a5560; max-width: 620px; margin: 0 auto; }
-@media (max-width: 640px) { .page-header h1 { font-size: 28px; } }
-
-/* ---------- Buttons ---------- */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  font-size: 22px;
-  font-weight: 700;
-  padding: 18px 32px;
-  border-radius: 999px;
-  border: none;
-  cursor: pointer;
-  text-decoration: none;
-  min-height: 60px;
-  transition: transform 0.08s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-}
-.btn:active { transform: scale(0.98); }
-.btn-primary {
-  background: var(--ink);
-  color: #fff;
-  box-shadow: var(--shadow);
-}
-.btn-primary:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); background: #000; }
-.btn-primary:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  box-shadow: none;
-  transform: none;
-}
-.btn-secondary {
-  background: var(--paper);
-  color: var(--ink);
-  border: 2px solid var(--line);
-}
-.btn-secondary:hover { border-color: var(--ink); }
-.btn-link {
-  background: none;
-  color: var(--ink);
-  font-size: 19px;
-  padding: 10px 6px;
-  text-decoration: underline;
-}
-.btn-block { width: 100%; }
-
-/* ---------- Hero (landing) ---------- */
-.hero {
-  padding: 88px 0 64px;
-  text-align: center;
-}
-.hero-logo { height: 96px; margin: 0 auto 28px; }
-.hero h1 {
-  font-size: 48px;
-  line-height: 1.12;
-  margin: 0 0 20px;
-  max-width: 780px;
-  margin-left: auto;
-  margin-right: auto;
-}
-.hero p.lead {
-  font-size: 22px;
-  color: var(--ink-soft);
-  max-width: 600px;
-  margin: 0 auto 40px;
-}
-.hero-art {
-  margin: 40px auto 0;
-  max-width: 420px;
-}
-
-/* Hero two-column layout with decorative SVG graphic */
-.hero-flex {
-  display: flex;
-  align-items: center;
-  gap: 56px;
-}
-.hero-copy {
-  flex: 1 1 460px;
-  text-align: left;
-}
-.hero-copy h1,
-.hero-copy p.lead {
-  margin-left: 0;
-  margin-right: 0;
-}
-.hero-graphic {
-  flex: 1 1 380px;
-  display: flex;
-  justify-content: center;
-}
-.hero-graphic svg {
-  width: 100%;
-  max-width: 420px;
-  height: auto;
-}
-@media (max-width: 900px) {
-  .hero-flex {
-    flex-direction: column;
-    text-align: center;
+  function el(tag, attrs, children) {
+    const node = document.createElement(tag);
+    if (attrs) {
+      for (const k in attrs) {
+        if (k === "class") node.className = attrs[k];
+        else if (k === "html") node.innerHTML = attrs[k];
+        else node.setAttribute(k, attrs[k]);
+      }
+    }
+    (children || []).forEach((c) => {
+      if (typeof c === "string") node.appendChild(document.createTextNode(c));
+      else if (c) node.appendChild(c);
+    });
+    return node;
   }
-  .hero-copy { text-align: center; }
-  .hero-copy h1,
-  .hero-copy p.lead {
-    margin-left: auto;
-    margin-right: auto;
+
+  const panel = document.getElementById("stepPanel");
+  const progressFill = document.getElementById("progressFill");
+
+  const STEPS = [
+    renderOccasion,
+    renderRelationship,
+    renderDetails,
+    renderPhoto,
+    renderGenerating,
+    renderPickDesign,
+    renderCustomize,
+    renderCheckoutRedirect,
+  ];
+
+  function setProgress() {
+    const pct = Math.round((state.step / (STEPS.length - 1)) * 100);
+    progressFill.style.width = pct + "%";
   }
-  .hero-graphic svg { max-width: 320px; }
-}
 
-/* Hero collage of sample cards */
-.hero-collage {
-  margin: 56px auto 0;
-  max-width: 620px;
-  height: 220px;
-  position: relative;
-}
-.collage-card {
-  position: absolute;
-  width: 190px;
-  aspect-ratio: 4/5;
-  object-fit: cover;
-  border-radius: 16px;
-  box-shadow: 0 16px 36px rgba(70, 30, 90, 0.22);
-  border: 6px solid var(--paper);
-  background: var(--gradient);
-  color: transparent;
-}
-.collage-card.c1 { left: 50%; top: 0; transform: translateX(-50%) rotate(-8deg); z-index: 2; }
-.collage-card.c2 { left: 18%; top: 30px; transform: rotate(-16deg); z-index: 1; }
-.collage-card.c3 { right: 18%; top: 30px; transform: rotate(16deg); z-index: 1; }
-@media (max-width: 640px) {
-  .hero-collage { height: 190px; }
-  .collage-card { width: 140px; }
-}
+  function goTo(stepIndex) {
+    state.step = stepIndex;
+    setProgress();
+    panel.innerHTML = "";
+    STEPS[stepIndex]();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
-/* 2-image variant of the hero collage */
-.hero-collage-2 { height: 260px; }
-.hero-collage-2 .collage-card { width: 210px; }
-.hero-collage-2 .c1 { left: 50%; top: 0; transform: translateX(-62%) rotate(-7deg); z-index: 2; }
-.hero-collage-2 .c2 { left: 50%; top: 20px; transform: translateX(-38%) rotate(8deg); z-index: 1; }
-@media (max-width: 640px) {
-  .hero-collage-2 { height: 210px; }
-  .hero-collage-2 .collage-card { width: 155px; }
-}
+  function next() { goTo(state.step + 1); }
+  function back() { goTo(Math.max(0, state.step - 1)); }
 
-/* Showcase section */
-.showcase {
-  background: var(--paper);
-  padding: 60px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  text-align: center;
-}
-.showcase h2 { font-size: 32px; margin-bottom: 10px; }
-.section-sub { font-size: 19px; color: #5a5560; margin: 0 0 36px; }
-.showcase-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 28px;
-  text-align: left;
-}
-.showcase-grid-4 { grid-template-columns: repeat(4, 1fr); }
-@media (max-width: 900px) { .showcase-grid-4 { grid-template-columns: 1fr 1fr; } }
-.showcase-item {
-  margin: 0;
-  background: var(--paper-soft);
-  border-radius: 18px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-.showcase-item:hover { transform: translateY(-6px); box-shadow: var(--shadow-lg); }
-.showcase-item img {
-  width: 100%;
-  aspect-ratio: 4/5;
-  object-fit: cover;
-  background: var(--gradient);
-  color: transparent;
-}
-.showcase-item figcaption {
-  padding: 16px 18px;
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--ink);
-}
-.showcase-more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  border: 2px dashed var(--line);
-  box-shadow: none;
-  aspect-ratio: 4/5;
-}
-.showcase-more:hover { border-color: var(--purple); }
-.showcase-more-inner { text-align: center; padding: 20px; }
-.showcase-more-inner .emoji { font-size: 40px; display: block; margin-bottom: 12px; }
-.showcase-more-inner h3 { font-size: 19px; color: var(--ink); margin: 0 0 6px; }
-.showcase-more-inner p { font-size: 15px; color: #75707c; margin: 0; }
-@media (max-width: 760px) {
-  .showcase-grid { grid-template-columns: 1fr; }
-}
+  function navRow({ onBack, onNext, nextLabel, nextDisabled }) {
+    const row = el("div", { class: "nav-row" }, [
+      state.step > 0
+        ? el("button", { class: "btn btn-secondary" }, ["Back"])
+        : el("span", { class: "spacer" }),
+      el("span", { class: "spacer" }),
+      el("button", { class: "btn btn-primary" }, [nextLabel || "Continue"]),
+    ]);
+    const backBtn = row.querySelector(".btn-secondary");
+    const nextBtn = row.querySelector(".btn-primary");
+    if (backBtn) backBtn.addEventListener("click", onBack || back);
+    if (nextBtn) {
+      nextBtn.addEventListener("click", onNext || next);
+      if (nextDisabled) nextBtn.disabled = true;
+    }
+    return row;
+  }
 
-/* Simple / split section with supporting art */
-.simple-split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: center;
-  gap: 48px;
-  padding: 64px 24px;
-}
-.simple-split-text h2 { font-size: 30px; margin: 0 0 16px; }
-.simple-split-text p {
-  font-size: 19px;
-  color: #5a5560;
-  margin: 0 0 28px;
-  max-width: 480px;
-}
-.simple-split-art img {
-  width: 100%;
-  min-height: 260px;
-  border-radius: 20px;
-  box-shadow: var(--shadow);
-  background: var(--gradient-warm);
-  color: transparent;
-}
-@media (max-width: 760px) {
-  .simple-split { grid-template-columns: 1fr; text-align: center; padding: 48px 24px; }
-  .simple-split-text p { margin-left: auto; margin-right: auto; }
-}
+  function choiceGrid(options, selectedId, onSelect) {
+    const grid = el("div", { class: "choice-grid" });
+    options.forEach((opt) => {
+      const card = el(
+        "div",
+        { class: "choice-card" + (selectedId === opt.id ? " selected" : "") },
+        [el("span", { class: "emoji" }, [opt.emoji]), el("span", {}, [opt.label])]
+      );
+      card.addEventListener("click", () => onSelect(opt.id));
+      grid.appendChild(card);
+    });
+    return grid;
+  }
 
-.trust-bar {
-  background: var(--paper-soft);
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 20px 0;
-}
-.trust-bar-inner {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 12px 44px;
-}
-.trust-item {
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-.trust-icon { font-size: 17px; }
-@media (max-width: 700px) {
-  .trust-bar-inner { gap: 10px 24px; }
-  .trust-item { font-size: 14px; }
-}
+  // ---------- Step 1: Occasion ----------
+  function renderOccasion() {
+    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 1 of 7"]));
+    panel.appendChild(el("h2", { class: "step-title" }, ["What's the occasion?"]));
+    panel.appendChild(el("p", { class: "step-sub" }, ["Pick the one that fits best."]));
 
-.how-it-works {
-  background: var(--paper);
-  padding: 88px 0;
-}
-.how-it-works h2 { text-align: center; font-size: 34px; margin-bottom: 12px; }
-.how-it-works .section-sub { text-align: center; margin-bottom: 48px; }
-.occasions-section { padding: 52px 0; }
-.steps-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 28px;
-}
-.step-card { text-align: center; }
-.step-num {
-  width: 56px; height: 56px;
-  border-radius: 50%;
-  background: var(--gradient);
-  color: #fff;
-  font-size: 26px;
-  font-weight: 800;
-  display: flex; align-items: center; justify-content: center;
-  margin: 0 auto 14px;
-}
-.step-num-wrap {
-  position: relative;
-  width: 56px;
-  margin: 0 auto 14px;
-}
-.step-num-wrap .step-num { margin: 0; }
-.step-num-logo {
-  position: absolute;
-  bottom: -6px;
-  right: -10px;
-  width: 30px; height: 30px;
-  border-radius: 50%;
-  background: var(--paper);
-  box-shadow: 0 3px 10px rgba(70, 30, 90, 0.14);
-  font-size: 16px;
-  display: flex; align-items: center; justify-content: center;
-}
-.how-it-works-section {
-  background: var(--paper-soft);
-  padding: 52px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-.step-card h3 { font-size: 20px; margin: 0 0 8px; }
-.step-card p { font-size: 17px; color: #5a5560; margin: 0; }
+    let selected = state.occasion;
+    const grid = choiceGrid(OCCASIONS, selected, (id) => {
+      state.occasion = id;
+      goTo(state.step); // re-render to show selection + continue button state
+    });
+    panel.appendChild(grid);
 
-@media (max-width: 760px) {
-  .hero h1 { font-size: 32px; }
-  .hero p.lead { font-size: 20px; }
-  .steps-grid { grid-template-columns: 1fr 1fr; }
-}
+    if (state.occasion === "other") {
+      const field = el("div", { class: "field", style: "margin-top:24px;" }, [
+        el("label", {}, ["What's the occasion?"]),
+        el("input", { type: "text", id: "occasionOtherInput", value: state.occasionOther || "" }),
+      ]);
+      panel.appendChild(field);
+      field.querySelector("input").addEventListener("input", (e) => {
+        state.occasionOther = e.target.value;
+      });
+    }
 
-/* How-it-works: even 4-up grid, step 4 gets a subtle warm accent
-   to show the handoff from "you & AI" to "we handle it" */
-.step-card-ship {
-  background: var(--paper-soft);
-  border-radius: 16px;
-  padding: 16px 12px;
-}
-.step-num-ship { background: var(--gradient-warm); }
+    const canContinue = state.occasion && (state.occasion !== "other" || state.occasionOther.trim());
+    panel.appendChild(
+      navRow({ nextDisabled: !canContinue, onNext: canContinue ? next : (e) => e.preventDefault() })
+    );
+  }
 
-/* Why Cardello — beige section reusing the steps-grid layout */
-.why-cardello {
-  background: var(--paper-soft);
-  padding: 52px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-.why-cardello h2 { text-align: center; font-size: 34px; margin-bottom: 12px; }
-.why-cardello .section-sub { text-align: center; margin-bottom: 48px; }
-.step-icon {
-  width: 56px; height: 56px;
-  border-radius: 50%;
-  background: var(--paper);
-  box-shadow: 0 4px 14px rgba(70, 30, 90, 0.08);
-  font-size: 26px;
-  display: flex; align-items: center; justify-content: center;
-  margin: 0 auto 14px;
-}
-.why-cardello-cta {
-  text-align: center;
-  margin-top: 44px;
-}
+  // ---------- Step 2: Relationship ----------
+  function renderRelationship() {
+    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 2 of 7"]));
+    panel.appendChild(el("h2", { class: "step-title" }, ["Who is this card for?"]));
+    panel.appendChild(el("p", { class: "step-sub" }, ["Choose who they are to you."]));
 
-.how-legend {
-  display: flex;
-  justify-content: center;
-  gap: 28px;
-  margin-top: 32px;
-  font-size: 15px;
-  color: #75707c;
-  font-weight: 600;
-}
-.how-legend span { display: inline-flex; align-items: center; gap: 8px; }
-.legend-dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  background: var(--gradient);
-  display: inline-block;
-}
-.legend-dot-ship { background: var(--gradient-warm); }
+    const grid = choiceGrid(RELATIONSHIPS, state.relationship, (id) => {
+      state.relationship = id;
+      goTo(state.step);
+    });
+    panel.appendChild(grid);
 
-/* Ideas / inspiration section */
-.ideas-section {
-  background: var(--paper);
-  padding: 72px 0;
-  border-top: 1px solid var(--line);
-}
-.ideas-section h2 { text-align: center; font-size: 34px; margin-bottom: 12px; }
-.ideas-section .section-sub { text-align: center; margin-bottom: 40px; }
-.ideas-heading { position: relative; text-align: center; }
-.ideas-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 22px;
-}
-@media (max-width: 900px) { .ideas-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 560px) { .ideas-grid { grid-template-columns: 1fr; } }
-.idea-card {
-  background: var(--paper-soft);
-  border-radius: 18px;
-  padding: 26px 22px;
-  text-align: center;
-}
-.idea-card .emoji-badge { margin-bottom: 12px; }
-.idea-card h3 { font-size: 18px; margin: 0 0 8px; }
-.idea-card p { font-size: 16px; color: var(--ink-soft); margin: 0; font-style: italic; }
-.ideas-note {
-  text-align: center;
-  color: #93909a;
-  font-size: 15px;
-  margin: 36px 0 0;
-}
-.ideas-cta { text-align: center; margin-top: 28px; }
-.showcase-item-cta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  text-align: center;
-  aspect-ratio: 4/5;
-  background: var(--paper-soft);
-  padding: 20px;
-}
-.showcase-cta-icon {
-  width: 56px; height: 56px;
-  border-radius: 50%;
-  background: var(--paper);
-  box-shadow: 0 4px 14px rgba(70, 30, 90, 0.08);
-  font-size: 26px;
-  display: flex; align-items: center; justify-content: center;
-}
-.showcase-cta-text {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 17px;
-  color: var(--ink);
-  margin: 0;
-}
-.showcase-item-cta .btn {
-  font-size: 17px;
-  padding: 14px 22px;
-  white-space: nowrap;
-}
+    if (state.relationship === "other") {
+      const field = el("div", { class: "field", style: "margin-top:24px;" }, [
+        el("label", {}, ["How would you describe them?"]),
+        el("input", { type: "text", id: "relOtherInput", value: state.relationshipOther || "", placeholder: "e.g. My neighbor" }),
+      ]);
+      panel.appendChild(field);
+      field.querySelector("input").addEventListener("input", (e) => {
+        state.relationshipOther = e.target.value;
+      });
+    }
 
-/* Keepsake section */
-.keepsake { background: var(--paper-soft); padding: 80px 0; }
-.section-white { background: var(--paper); padding: 80px 0; }
+    const nameField = el("div", { class: "field", style: "margin-top:24px;" }, [
+      el("label", {}, ["What's their first name? (optional)"]),
+      el("input", { type: "text", id: "nameInput", value: state.recipientName || "", placeholder: "e.g. Robert" }),
+    ]);
+    panel.appendChild(nameField);
+    nameField.querySelector("input").addEventListener("input", (e) => {
+      state.recipientName = e.target.value;
+    });
 
-/* Reactions section */
-.reactions { padding: 60px 0; text-align: center; }
-.reactions-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-  margin-top: 12px;
-}
-.reaction-card {
-  background: var(--paper);
-  border: 2px solid var(--line);
-  border-radius: 18px;
-  padding: 30px 24px;
-  box-shadow: 0 4px 14px rgba(70, 30, 90, 0.05);
-}
-.reaction-emoji { font-size: 40px; margin-bottom: 14px; }
-.reaction-quote { font-size: 19px; color: var(--ink); margin: 0; line-height: 1.45; }
-.reactions-note { margin-top: 30px; font-size: 15px; color: #918c99; font-style: italic; }
-.reactions-cta { margin-top: 32px; }
-@media (max-width: 760px) {
-  .reactions-grid { grid-template-columns: 1fr; }
-}
+    const canContinue = state.relationship && (state.relationship !== "other" || state.relationshipOther.trim());
+    panel.appendChild(navRow({ nextDisabled: !canContinue }));
+  }
 
-/* ---------- Wizard ---------- */
-.wizard-wrap {
-  padding: 32px 0 80px;
-}
-.progress-track {
-  height: 10px;
-  background: var(--line);
-  border-radius: 999px;
-  overflow: hidden;
-  margin-bottom: 36px;
-}
-.progress-fill {
-  height: 100%;
-  background: var(--gradient);
-  border-radius: 999px;
-  transition: width 0.3s ease;
-  width: 0%;
-}
+  // ---------- Step 3: Details & tone ----------
+  function getDefaultTone(occasion) {
+    // Sympathy cards shouldn't default to jokes — everything else defaults
+    // to funny, since that's the style Cardello is built around.
+    return occasion === "sympathy" ? "heartfelt" : "funny";
+  }
 
-.card-panel {
-  background: var(--paper);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 40px;
-}
-@media (max-width: 640px) {
-  .card-panel { padding: 24px; border-radius: 16px; }
-  body { font-size: 18px; }
-}
+  function renderDetails() {
+    if (!state.tone) state.tone = getDefaultTone(state.occasion);
 
-.step-eyebrow {
-  color: var(--purple);
-  font-weight: 700;
-  font-size: 17px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin: 0 0 10px;
-}
-.step-title { font-size: 30px; margin: 0 0 8px; }
-.step-sub { font-size: 19px; color: #5a5560; margin: 0 0 28px; }
+    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 3 of 7"]));
+    panel.appendChild(el("h2", { class: "step-title" }, ["Tell us a little about them"]));
+    panel.appendChild(el("p", { class: "step-sub" }, [
+      "A hobby, something they love, or a fun detail — this helps our AI design a card that feels like them.",
+    ]));
 
-.choice-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-@media (max-width: 640px) {
-  .choice-grid { grid-template-columns: 1fr 1fr; }
-}
+    const field = el("div", { class: "field" }, [
+      el("label", {}, ["What do they love, or what makes them special?"]),
+      el("textarea", { id: "detailsInput", placeholder: "e.g. He loves fishing, terrible dad jokes, and his golden retriever Max." }, [state.details || ""]),
+      el("p", { class: "hint" }, ["A sentence or two is plenty."]),
+    ]);
+    panel.appendChild(field);
+    field.querySelector("textarea").addEventListener("input", (e) => {
+      state.details = e.target.value;
+    });
 
-.choice-card {
-  border: 2px solid var(--line);
-  background: var(--paper);
-  border-radius: 16px;
-  padding: 22px 16px;
-  text-align: center;
-  cursor: pointer;
-  font-size: 20px;
-  font-weight: 600;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  min-height: 110px;
-  justify-content: center;
-}
-.choice-card .emoji { font-size: 34px; }
-.choice-card:hover { border-color: var(--purple); }
-.choice-card.selected {
-  border-color: var(--purple);
-  background: linear-gradient(0deg, rgba(124,58,237,0.06), rgba(124,58,237,0.06));
-  box-shadow: 0 0 0 3px rgba(124,58,237,0.15);
-}
+    panel.appendChild(el("div", { class: "field" }, [el("label", {}, ["What feeling should the card have?"])]));
+    const grid = choiceGrid(TONES, state.tone, (id) => {
+      state.tone = id;
+      goTo(state.step);
+    });
+    panel.appendChild(grid);
 
-.field { margin-bottom: 24px; }
-.field label {
-  display: block;
-  font-weight: 700;
-  font-size: 19px;
-  margin-bottom: 10px;
-}
-.field .hint { font-size: 16px; color: #75707c; margin-top: 6px; }
-input[type="text"], textarea, select {
-  width: 100%;
-  font-size: 19px;
-  font-family: inherit;
-  padding: 16px 18px;
-  border-radius: 12px;
-  border: 2px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-}
-input[type="text"]:focus, textarea:focus, select:focus {
-  outline: none;
-  border-color: var(--purple);
-}
-textarea { resize: vertical; min-height: 110px; }
+    const canContinue = !!state.tone;
+    panel.appendChild(navRow({ nextDisabled: !canContinue }));
+  }
 
-.upload-box {
-  border: 3px dashed var(--line);
-  border-radius: 16px;
-  padding: 40px 20px;
-  text-align: center;
-  cursor: pointer;
-  background: var(--paper-soft);
-}
-.upload-box:hover { border-color: var(--purple); }
-.upload-box .icon { font-size: 46px; margin-bottom: 12px; }
-.upload-box p { margin: 4px 0; font-size: 19px; }
-.upload-box .small { font-size: 15px; color: #837e8c; }
-.upload-preview {
-  margin-top: 20px;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  justify-content: center;
-}
-.upload-preview img {
-  width: 110px; height: 110px;
-  object-fit: cover;
-  border-radius: 14px;
-  border: 2px solid var(--line);
-}
+  // ---------- Step 4: Photo upload ----------
+  function renderPhoto() {
+    if (state.relationship === "group") {
+      renderGroupPhotos();
+      return;
+    }
 
-.upload-box-disabled { opacity: 0.5; pointer-events: none; }
+    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 4 of 7"]));
+    panel.appendChild(el("h2", { class: "step-title" }, ["Add a photo"]));
+    panel.appendChild(el("p", { class: "step-sub" }, [
+      "Upload one clear photo of them. Our AI will use it to design your card.",
+    ]));
 
-.group-photo-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 14px;
-  margin-top: 20px;
-}
-.group-photo-tile {
-  position: relative;
-  aspect-ratio: 1;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 2px solid var(--line);
-}
-.group-photo-tile img {
-  width: 100%; height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.group-photo-remove {
-  position: absolute;
-  top: 6px; right: 6px;
-  width: 26px; height: 26px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(23, 21, 26, 0.75);
-  color: #fff;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-}
-.group-photo-remove:hover { background: #000; }
+    const fileInput = el("input", { type: "file", accept: "image/*", class: "visually-hidden", id: "photoFileInput" });
+    const box = el("div", { class: "upload-box" }, [
+      el("div", { class: "icon" }, ["📷"]),
+      el("p", {}, ["Tap here to choose a photo"]),
+      el("p", { class: "small" }, ["JPG or PNG, from your camera roll or files"]),
+    ]);
+    box.addEventListener("click", () => fileInput.click());
 
-.nav-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 36px;
-  gap: 16px;
-}
-.nav-row .spacer { flex: 1; }
+    panel.appendChild(box);
+    panel.appendChild(fileInput);
 
-/* ---------- Loading ---------- */
-.loading-wrap { text-align: center; padding: 60px 20px; }
-.spinner {
-  width: 64px; height: 64px;
-  border-radius: 50%;
-  border: 6px solid var(--line);
-  border-top-color: var(--purple);
-  margin: 0 auto 28px;
-  animation: spin 0.9s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.loading-wrap h2 { font-size: 26px; margin-bottom: 10px; }
-.loading-wrap p { color: #5a5560; }
+    const previewWrap = el("div", { id: "previewWrap" });
+    panel.appendChild(previewWrap);
 
-/* ---------- Design results ---------- */
-.design-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-@media (max-width: 640px) { .design-grid { grid-template-columns: 1fr; } }
-.design-option {
-  border: 3px solid var(--line);
-  border-radius: 18px;
-  overflow: hidden;
-  cursor: pointer;
-  background: var(--paper);
-}
-.design-option img { width: 100%; aspect-ratio: 3/4; object-fit: cover; }
-.design-option.selected { border-color: var(--purple); box-shadow: 0 0 0 4px rgba(124,58,237,0.15); }
-.design-option .label {
-  padding: 12px;
-  text-align: center;
-  font-weight: 700;
-  font-size: 17px;
-}
+    function renderPreview() {
+      previewWrap.innerHTML = "";
+      if (state.photoDataUrl) {
+        const row = el("div", { class: "upload-preview" }, [
+          el("img", { src: state.photoDataUrl, alt: "Selected photo" }),
+          el("button", { class: "btn btn-link" }, ["Choose a different photo"]),
+        ]);
+        row.querySelector("button").addEventListener("click", () => fileInput.click());
+        previewWrap.appendChild(row);
+      }
+    }
+    renderPreview();
 
-/* ---------- Preview / customize ---------- */
-.preview-layout {
-  display: grid;
-  grid-template-columns: 340px 1fr;
-  gap: 32px;
-}
-@media (max-width: 760px) { .preview-layout { grid-template-columns: 1fr; } }
-.card-mock {
-  background: var(--paper-soft);
-  border-radius: 16px;
-  padding: 20px;
-  text-align: center;
-}
-.card-mock img {
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-}
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      state.photoFile = file;
+      const reader = new FileReader();
+      reader.onload = () => {
+        state.photoDataUrl = reader.result;
+        renderPreview();
+        updateContinueState();
+      };
+      reader.readAsDataURL(file);
+    });
 
-/* ---------- Live 3D "open card" preview ---------- */
-/* Interactive: move your cursor (or finger, on touch) over the scene and
-   the card tilts to follow it, like a Vistaprint-style product preview.
-   The rotation itself is applied inline by JS (renderCustomize in app.js);
-   these rules just set the starting pose, the 3D stage, and a short
-   transition so the tilt feels smooth instead of jumpy. */
-.card-3d-scene {
-  perspective: 1400px;
-  display: flex;
-  justify-content: center;
-  padding: 28px 8px 8px;
-  cursor: grab;
-  touch-action: none;
-}
-.card-3d-scene:active { cursor: grabbing; }
-.card-3d {
-  display: flex;
-  transform-style: preserve-3d;
-  transform: rotateX(4deg) rotateY(0deg);
-  filter: drop-shadow(0 22px 30px rgba(0,0,0,0.28));
-  transition: transform 0.15s ease-out;
-  will-change: transform;
-}
-.card-3d-page {
-  width: 200px;
-  aspect-ratio: 5 / 7;
-  background: #fdfcf9;
-  position: relative;
-}
-/* Matches the real proportions when the customer has picked the Large
-   (7x10") card, so the preview isn't always the Standard shape. */
-.card-3d-page.size-large {
-  aspect-ratio: 7 / 10;
-}
-.card-3d-page.inside {
-  border-radius: 10px 0 0 10px;
-  transform-origin: right center;
-  transform: rotateY(20deg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px 18px;
-  box-shadow: inset -6px 0 14px -8px rgba(0,0,0,0.25);
-}
-/* A soft shadow right at the fold, on both pages, so the two halves read
-   as one physical card bending away from the viewer instead of two flat
-   rectangles sitting side by side. */
-.card-3d-page.inside::after {
-  content: "";
-  position: absolute;
-  top: 0; right: 0; bottom: 0;
-  width: 16px;
-  background: linear-gradient(to right, transparent, rgba(0,0,0,0.14));
-  pointer-events: none;
-}
-.card-3d-page.front {
-  border-radius: 0 10px 10px 0;
-  transform-origin: left center;
-  transform: rotateY(-20deg);
-  overflow: hidden;
-  box-shadow: inset 6px 0 14px -8px rgba(0,0,0,0.25);
-}
-.card-3d-page.front::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; bottom: 0;
-  width: 16px;
-  background: linear-gradient(to left, transparent, rgba(0,0,0,0.14));
-  pointer-events: none;
-  z-index: 1;
-}
-.card-3d-page.front img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.card-3d-message {
-  font-style: italic;
-  /* Starting size only — app.js shrinks this to fit whatever the customer
-     actually typed, so a long message never overflows or looks oversized. */
-  font-size: 13px;
-  line-height: 1.55;
-  text-align: center;
-  color: #3a3630;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: 100%;
-  overflow: hidden;
-}
-.card-3d-caption {
-  margin-top: 16px;
-  font-size: 13px;
-  color: #8a8478;
-}
-.option-row { display: flex; gap: 12px; flex-wrap: wrap; }
-.pill-choice {
-  border: 2px solid var(--line);
-  border-radius: 999px;
-  padding: 10px 20px;
-  font-size: 17px;
-  font-weight: 600;
-  cursor: pointer;
-  background: var(--paper);
-}
-.pill-choice.selected { border-color: var(--purple); color: var(--purple); background: rgba(124,58,237,0.06); }
+    const nav = navRow({ nextDisabled: !state.photoDataUrl, onNext: () => next() });
+    panel.appendChild(nav);
 
-.price-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 22px;
-  font-weight: 800;
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--line);
-}
+    function updateContinueState() {
+      const nextBtn = nav.querySelector(".btn-primary");
+      nextBtn.disabled = !state.photoDataUrl;
+    }
+  }
 
-/* ---------- Alerts ---------- */
-.alert {
-  background: #fdeeee;
-  color: var(--error);
-  border: 1px solid #f6c9c9;
-  padding: 16px 18px;
-  border-radius: 12px;
-  font-size: 17px;
-  margin-bottom: 24px;
-}
+  // ---------- Step 4b: Group photo upload (Family or Friends) ----------
+  const MAX_GROUP_PHOTOS = 8;
 
-/* ---------- Occasions hub ---------- */
-.occasions-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 22px;
-  padding: 56px 0 72px;
-}
-@media (max-width: 900px) { .occasions-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 480px) { .occasions-grid { grid-template-columns: 1fr; } }
-.occasion-card {
-  display: block;
-  background: var(--paper);
-  border: 2px solid var(--line);
-  border-radius: 18px;
-  padding: 30px 20px;
-  text-align: center;
-  text-decoration: none;
-  color: var(--ink);
-  box-shadow: 0 4px 14px rgba(70, 30, 90, 0.05);
-  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
-}
-.occasion-card:hover { border-color: var(--purple); transform: translateY(-4px); box-shadow: var(--shadow); }
-.occasion-card:hover .emoji-badge { transform: scale(1.06); }
-.occasion-card .emoji {
-  font-size: 34px;
-  display: block;
-  line-height: 1;
-}
-.occasion-card h3 { font-size: 21px; margin: 0 0 6px; }
-.occasion-card p { font-size: 15px; color: #75707c; margin: 0; }
+  function renderGroupPhotos() {
+    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 4 of 7"]));
+    panel.appendChild(el("h2", { class: "step-title" }, ["Add everyone's photo"]));
+    panel.appendChild(el("p", { class: "step-sub" }, [
+      "Upload a clear photo of each person to include — one face per photo works best. Add up to " +
+        MAX_GROUP_PHOTOS +
+        ".",
+    ]));
 
-.emoji-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  margin: 0 auto 16px;
-  transition: transform 0.15s ease;
-}
-.badge-pink   { background: rgba(236, 63, 143, 0.12); }
-.badge-purple { background: rgba(124, 58, 237, 0.12); }
-.badge-blue   { background: rgba(59, 130, 246, 0.12); }
-.badge-orange { background: rgba(249, 161, 58, 0.14); }
+    const fileInput = el("input", {
+      type: "file",
+      accept: "image/*",
+      multiple: "multiple",
+      class: "visually-hidden",
+      id: "groupPhotoFileInput",
+    });
 
-/* Occasions section heading accent */
-.occasions-heading {
-  position: relative;
-  text-align: center;
-}
-.occasions-confetti {
-  position: absolute;
-  top: -30px;
-  left: 50%;
-  width: 320px;
-  height: 96px;
-  transform: translateX(-50%);
-  pointer-events: none;
-}
+    const box = el("div", { class: "upload-box" }, [
+      el("div", { class: "icon" }, ["👨‍👩‍👧‍👦"]),
+      el("p", {}, ["Tap here to add photos"]),
+      el("p", { class: "small" }, ["You can select multiple photos at once, or add them one at a time"]),
+    ]);
+    box.addEventListener("click", () => fileInput.click());
 
-/* ---------- Simple content pages (About / FAQ / Shipping / Contact) ---------- */
-.content-page {
-  padding: 56px 0 80px;
-}
-.content-page .container { max-width: 760px; }
-.content-page h2 {
-  font-size: 26px;
-  margin: 40px 0 14px;
-}
-.content-page h2:first-child { margin-top: 0; }
-.content-page p { font-size: 19px; color: #423f47; margin: 0 0 16px; }
-.content-page ul { font-size: 19px; color: #423f47; padding-left: 24px; }
-.content-page li { margin-bottom: 8px; }
+    panel.appendChild(box);
+    panel.appendChild(fileInput);
 
-.faq-item {
-  border-bottom: 1px solid var(--line);
-  padding: 22px 0;
-}
-.faq-item:first-child { padding-top: 0; }
-.faq-item h3 { font-size: 20px; margin: 0 0 10px; }
-.faq-item p { font-size: 18px; color: #5a5560; margin: 0; }
+    const grid = el("div", { class: "group-photo-grid" });
+    panel.appendChild(grid);
 
-.contact-card {
-  background: var(--paper);
-  border: 2px solid var(--line);
-  border-radius: 18px;
-  padding: 32px;
-  text-align: center;
-  margin-top: 20px;
-}
-.contact-card a { color: var(--purple); font-weight: 700; text-decoration: none; font-size: 20px; }
-.contact-card .contact-row { margin-bottom: 18px; }
-.contact-card .contact-row:last-child { margin-bottom: 0; }
+    const nav = navRow({ nextDisabled: state.groupPhotos.length === 0 });
+    panel.appendChild(nav);
 
-/* ---------- Footer ---------- */
-.site-footer {
-  background: var(--paper);
-  border-top: 1px solid var(--line);
-  padding: 48px 0 28px;
-}
-.footer-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
-  gap: 32px;
-  margin-bottom: 28px;
-}
-.footer-brand img { height: 34px; margin-bottom: 12px; }
-.footer-brand p { font-size: 15px; color: #75707c; max-width: 280px; }
-.footer-col h4 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.04em; color: #75707c; margin: 0 0 14px; }
-.footer-col a { display: block; color: var(--ink); text-decoration: none; font-size: 16px; margin-bottom: 10px; }
-.footer-col a:hover { color: var(--purple); }
-.footer-bottom {
-  border-top: 1px solid var(--line);
-  padding-top: 22px;
-  text-align: center;
-  color: #8a8590;
-  font-size: 15px;
-}
-@media (max-width: 700px) {
-  .footer-grid { grid-template-columns: 1fr; gap: 24px; }
-}
+    function updateContinueState() {
+      nav.querySelector(".btn-primary").disabled = state.groupPhotos.length === 0;
+    }
 
-.visually-hidden {
-  position: absolute;
-  width: 1px; height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
+    function renderGrid() {
+      grid.innerHTML = "";
+      state.groupPhotos.forEach((photo, i) => {
+        const tile = el("div", { class: "group-photo-tile" }, [
+          el("img", { src: photo.dataUrl, alt: "Person " + (i + 1) }),
+          el("button", { class: "group-photo-remove", type: "button", title: "Remove" }, ["✕"]),
+        ]);
+        tile.querySelector("button").addEventListener("click", () => {
+          state.groupPhotos.splice(i, 1);
+          renderGrid();
+          updateContinueState();
+        });
+        grid.appendChild(tile);
+      });
+      if (state.groupPhotos.length >= MAX_GROUP_PHOTOS) {
+        box.classList.add("upload-box-disabled");
+      } else {
+        box.classList.remove("upload-box-disabled");
+      }
+    }
+    renderGrid();
+
+    fileInput.addEventListener("change", () => {
+      const files = Array.from(fileInput.files || []).slice(
+        0,
+        Math.max(0, MAX_GROUP_PHOTOS - state.groupPhotos.length)
+      );
+      if (!files.length) return;
+
+      Promise.all(
+        files.map(
+          (file) =>
+            new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.readAsDataURL(file);
+            })
+        )
+      ).then((dataUrls) => {
+        dataUrls.forEach((dataUrl) => state.groupPhotos.push({ dataUrl }));
+        renderGrid();
+        updateContinueState();
+      });
+
+      fileInput.value = "";
+    });
+  }
+
+  // ---------- Step 5: Generating (calls API) ----------
+  function renderGenerating() {
+    panel.appendChild(
+      el("div", { class: "loading-wrap" }, [
+        el("div", { class: "spinner" }),
+        el("h2", {}, ["Creating your card designs..."]),
+        el("p", {}, ["This usually takes about 20–30 seconds. Please don't close this page."]),
+      ])
+    );
+
+    const occasionLabel =
+      state.occasion === "other" ? state.occasionOther : OCCASIONS.find((o) => o.id === state.occasion).label;
+    const relationshipLabel =
+      state.relationship === "other"
+        ? state.relationshipOther
+        : RELATIONSHIPS.find((r) => r.id === state.relationship).label;
+
+    const isGroup = state.relationship === "group";
+
+    fetch("/api/generate-cards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        occasion: occasionLabel,
+        relationship: relationshipLabel,
+        recipientName: state.recipientName,
+        details: state.details,
+        tone: state.tone,
+        photoDataUrl: isGroup ? null : state.photoDataUrl,
+        groupPhotoDataUrls: isGroup ? state.groupPhotos.map((p) => p.dataUrl) : undefined,
+      }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("Generation failed");
+        return r.json();
+      })
+      .then((data) => {
+        state.designs = data.designs || [];
+        state.message = data.suggestedMessage || "";
+        goTo(state.step + 1);
+      })
+      .catch(() => {
+        panel.innerHTML = "";
+        panel.appendChild(el("div", { class: "alert" }, [
+          "We had trouble creating your designs. Please try again — no charge has been made.",
+        ]));
+        const retry = el("button", { class: "btn btn-primary" }, ["Try Again"]);
+        retry.addEventListener("click", () => goTo(state.step));
+        panel.appendChild(retry);
+        const backBtn = el("button", { class: "btn btn-secondary", style: "margin-left:12px;" }, ["Back"]);
+        backBtn.addEventListener("click", back);
+        panel.appendChild(backBtn);
+      });
+  }
+
+  // ---------- Step 6: Pick a design ----------
+  function renderPickDesign() {
+    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 5 of 7"]));
+    panel.appendChild(el("h2", { class: "step-title" }, ["Pick your favorite"]));
+    panel.appendChild(el("p", { class: "step-sub" }, ["Tap a design to select it."]));
+
+    const grid = el("div", { class: "design-grid" });
+    (state.designs.length ? state.designs : placeholderDesigns()).forEach((d, i) => {
+      const opt = el(
+        "div",
+        { class: "design-option" + (state.selectedDesignId === d.id ? " selected" : "") },
+        [el("img", { src: d.url, alt: "Card design option " + (i + 1) }), el("div", { class: "label" }, ["Design " + (i + 1)])]
+      );
+      opt.addEventListener("click", () => {
+        state.selectedDesignId = d.id;
+        goTo(state.step);
+      });
+      grid.appendChild(opt);
+    });
+    panel.appendChild(grid);
+
+    panel.appendChild(navRow({ nextDisabled: !state.selectedDesignId }));
+  }
+
+  function placeholderDesigns() {
+    // Fallback so the flow is browsable before an image API key is configured.
+    return [1, 2, 3, 4].map((n) => ({ id: "placeholder-" + n, url: "assets/logo.png" }));
+  }
+
+  // Makes the live 3D card preview follow the cursor (or a finger, on
+  // touch), tilting the card as you move over it — like the "spin around
+  // the product" preview you see on sites like Vistaprint. Purely CSS
+  // transforms driven by pointer position; no extra image or library.
+  function attachCard3dTilt(scene, cardEl) {
+    const BASE_TILT_X = 4; // resting tilt, matches the CSS default pose
+    const MAX_TILT_Y = 28; // left/right, following horizontal movement
+    const MAX_TILT_X = 12; // up/down, following vertical movement
+
+    function setTilt(rotateX, rotateY) {
+      cardEl.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+    }
+    function resetTilt() {
+      setTilt(BASE_TILT_X, 0);
+    }
+    function applyFromPoint(clientX, clientY) {
+      const rect = scene.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const relX = (clientX - rect.left) / rect.width; // 0 (left) .. 1 (right)
+      const relY = (clientY - rect.top) / rect.height; // 0 (top) .. 1 (bottom)
+      const rotateY = (relX - 0.5) * 2 * MAX_TILT_Y;
+      const rotateX = BASE_TILT_X - (relY - 0.5) * 2 * MAX_TILT_X;
+      setTilt(rotateX, rotateY);
+    }
+
+    resetTilt();
+
+    scene.addEventListener("mousemove", (e) => applyFromPoint(e.clientX, e.clientY));
+    scene.addEventListener("mouseleave", resetTilt);
+
+    scene.addEventListener(
+      "touchmove",
+      (e) => {
+        const touch = e.touches && e.touches[0];
+        if (!touch) return;
+        applyFromPoint(touch.clientX, touch.clientY);
+        e.preventDefault(); // avoid the page scrolling while looking around the card
+      },
+      { passive: false }
+    );
+    scene.addEventListener("touchend", resetTilt);
+    scene.addEventListener("touchcancel", resetTilt);
+  }
+
+  // Shrinks the inside-message text to fit the little card preview instead
+  // of overflowing or looking oversized for a short message. Steps the font
+  // size down until the text fits its page, then stops — cheap since it's
+  // only ever a sentence or two.
+  function fitMessageText(messageEl) {
+    const MAX_FONT = 13;
+    const MIN_FONT = 8;
+    const container = messageEl.parentElement;
+    if (!container) return;
+    let fontSize = MAX_FONT;
+    messageEl.style.fontSize = fontSize + "px";
+    while (fontSize > MIN_FONT && messageEl.scrollHeight > container.clientHeight) {
+      fontSize -= 0.5;
+      messageEl.style.fontSize = fontSize + "px";
+    }
+  }
+
+  // ---------- Step 7: Customize message + size ----------
+  function renderCustomize() {
+    panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 6 of 7"]));
+    panel.appendChild(el("h2", { class: "step-title" }, ["Make it yours"]));
+    panel.appendChild(el("p", { class: "step-sub" }, ["Edit the message inside, and choose your card style."]));
+
+    const design = (state.designs.length ? state.designs : placeholderDesigns()).find(
+      (d) => d.id === state.selectedDesignId
+    ) || placeholderDesigns()[0];
+
+    const layout = el("div", { class: "preview-layout" });
+
+    const pageSizeClass = state.cardSize === "large" ? " size-large" : "";
+    const messageEl = el("p", { class: "card-3d-message" }, [state.message || "Your message will appear here as you type..."]);
+    const card3d = el("div", { class: "card-3d" }, [
+      el("div", { class: "card-3d-page inside" + pageSizeClass }, [messageEl]),
+      el("div", { class: "card-3d-page front" + pageSizeClass }, [
+        el("img", { src: design.url, alt: "Your selected card design" }),
+      ]),
+    ]);
+    const scene = el("div", { class: "card-3d-scene" }, [card3d]);
+    const mock = el("div", { class: "card-mock" }, [
+      scene,
+      el("p", { class: "card-3d-caption" }, ["Move your cursor over the card to look around it"]),
+    ]);
+    layout.appendChild(mock);
+    attachCard3dTilt(scene, card3d);
+    fitMessageText(messageEl);
+
+    const formCol = el("div", {});
+    const msgField = el("div", { class: "field" }, [
+      el("label", {}, ["Your message inside the card"]),
+      el("textarea", { id: "msgInput" }, [state.message || ""]),
+    ]);
+    formCol.appendChild(msgField);
+    msgField.querySelector("textarea").addEventListener("input", (e) => {
+      state.message = e.target.value;
+      messageEl.textContent = state.message.trim() || "Your message will appear here as you type...";
+      fitMessageText(messageEl);
+    });
+
+    formCol.appendChild(el("div", { class: "field" }, [el("label", {}, ["Card size"])]));
+    const sizeRow = el("div", { class: "option-row" }, [
+      pill("Standard (5x7\")", state.cardSize === "standard", () => {
+        state.cardSize = "standard";
+        goTo(state.step);
+      }),
+      pill("Large (7x10\")", state.cardSize === "large", () => {
+        state.cardSize = "large";
+        goTo(state.step);
+      }),
+    ]);
+    formCol.appendChild(sizeRow);
+
+    formCol.appendChild(el("div", { class: "field", style: "margin-top:20px;" }, [el("label", {}, ["Finish"])]));
+    const finishRow = el("div", { class: "option-row" }, [
+      pill("Matte", state.finish === "matte", () => {
+        state.finish = "matte";
+        goTo(state.step);
+      }),
+      pill("Glossy (+$2.00)", state.finish === "glossy", () => {
+        state.finish = "glossy";
+        goTo(state.step);
+      }),
+    ]);
+    formCol.appendChild(finishRow);
+
+    const total = (CARD_PRICE[state.cardSize] + FINISH_ADD[state.finish]).toFixed(2);
+    formCol.appendChild(
+      el("div", { class: "price-row" }, [el("span", {}, ["Total"]), el("span", {}, ["$" + total])])
+    );
+
+    layout.appendChild(formCol);
+    panel.appendChild(layout);
+
+    panel.appendChild(navRow({ nextLabel: "Continue to Shipping & Payment", nextDisabled: !state.message.trim() }));
+  }
+
+  function pill(label, selected, onClick) {
+    const p = el("div", { class: "pill-choice" + (selected ? " selected" : "") }, [label]);
+    p.addEventListener("click", onClick);
+    return p;
+  }
+
+  // ---------- Step 8: Redirect to Stripe Checkout ----------
+  function renderCheckoutRedirect() {
+    panel.appendChild(
+      el("div", { class: "loading-wrap" }, [
+        el("div", { class: "spinner" }),
+        el("h2", {}, ["Taking you to secure checkout..."]),
+        el("p", {}, ["You'll enter your shipping address and payment on the next screen."]),
+      ])
+    );
+
+    const design = (state.designs.length ? state.designs : placeholderDesigns()).find(
+      (d) => d.id === state.selectedDesignId
+    ) || placeholderDesigns()[0];
+    const total = (CARD_PRICE[state.cardSize] + FINISH_ADD[state.finish]).toFixed(2);
+
+    fetch("/api/create-checkout-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        designUrl: design.url,
+        message: state.message,
+        cardSize: state.cardSize,
+        finish: state.finish,
+        amount: total,
+        recipientName: state.recipientName,
+        occasion: state.occasion === "other" ? state.occasionOther : state.occasion,
+      }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("Checkout session failed");
+        return r.json();
+      })
+      .then((data) => {
+        if (data.url) window.location.href = data.url;
+        else throw new Error("No checkout URL returned");
+      })
+      .catch(() => {
+        panel.innerHTML = "";
+        panel.appendChild(
+          el("div", { class: "alert" }, ["We couldn't start checkout. Please try again — no charge has been made."])
+        );
+        const retry = el("button", { class: "btn btn-primary" }, ["Try Again"]);
+        retry.addEventListener("click", () => goTo(state.step));
+        panel.appendChild(retry);
+      });
+  }
+
+  // If arriving from an occasion-specific link (e.g. an ad landing on
+  // create.html?occasion=birthday), pre-select it and skip straight to
+  // step 2 so the customer isn't asked something we already know.
+  (function initFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get("occasion");
+    if (requested && OCCASIONS.some((o) => o.id === requested)) {
+      state.occasion = requested;
+      goTo(1);
+    } else {
+      goTo(0);
+    }
+  })();
+})();

@@ -26,8 +26,18 @@
  * Uses OpenAI's image + chat APIs directly via fetch — no SDK required, so
  * this deploys with zero npm install.
  *
- * Required env var: OPENAI_API_KEY
+ * Required env vars:
+ *   OPENAI_API_KEY
+ *   BLOB_READ_WRITE_TOKEN — auto-set when Vercel Blob storage is enabled on
+ *                            this project. Each generated design is uploaded
+ *                            here immediately so the browser only ever holds
+ *                            a short hosted URL, never the raw (multi-MB)
+ *                            base64 image — sending that huge string back to
+ *                            /api/create-checkout-session later would exceed
+ *                            Vercel's request body size limit.
  */
+
+const { put } = require("@vercel/blob");
 
 // Different typography/poster treatments — the photo and copy stay the
 // same, only the visual "card shop style" changes between options.
@@ -203,18 +213,27 @@ async function generateOneDesign({ prompt, styleDescriptor, photos }) {
   const data = await resp.json();
   const b64 = data.data && data.data[0] && data.data[0].b64_json;
   if (!b64) throw new Error("No image returned from image generation API");
+
+  // Upload immediately to Vercel Blob so we only ever hand the browser a
+  // short hosted URL, not a multi-MB base64 string (see file header).
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    try {
+      const buffer = Buffer.from(b64, "base64");
+      const blob = await put(`cardello-designs/${Date.now()}-${Math.random().toString(36).slice(2)}.png`, buffer, {
+        access: "public",
+        contentType: "image/png",
+      });
+      return blob.url;
+    } catch (err) {
+      console.error("Could not upload design to Blob storage, falling back to inline data URL:", err);
+    }
+  }
+
   return `data:image/png;base64,${b64}`;
 }
 
 async function generateSuggestedMessage({ occasion, relationship, recipientName, details, tone }) {
   const toneWord = TONE_WORDS[tone] || TONE_WORDS.heartfelt;
-  const name = recipientName && recipientName.trim();
-
-  const nameInstruction = name
-    ? `Address it directly to them by name — start with a natural greeting like "Dear ${name}," or "${name},", and ` +
-      `work their name "${name}" in naturally at least one more time later in the message (not just the greeting), ` +
-      `the way you'd actually say their name to make it feel personal. Don't overdo it — 2 mentions total is plenty.`
-    : `No name was given, so write it as a warm direct address without a name (e.g. skip the greeting line or keep it generic).`;
 
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -229,8 +248,7 @@ async function generateSuggestedMessage({ occasion, relationship, recipientName,
           role: "user",
           content:
             `Write a short, ${toneWord} greeting card message (3-5 sentences max) for a ${occasion || "special"} card. ` +
-            `It's from the customer to their ${relationship || "loved one"}${name ? `, ${name}` : ""}. ` +
-            `${nameInstruction} ` +
+            `It's from the customer to their ${relationship || "loved one"}${recipientName ? `, ${recipientName}` : ""}. ` +
             `Details about them: ${details || "none provided"}. ` +
             `Write only the message text — no quotation marks, no signature line, no preamble.`,
         },

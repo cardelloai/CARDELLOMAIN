@@ -476,6 +476,50 @@
     return [1, 2, 3, 4].map((n) => ({ id: "placeholder-" + n, url: "assets/logo.png" }));
   }
 
+  // Makes the live 3D card preview follow the cursor (or a finger, on
+  // touch), tilting the card as you move over it — like the "spin around
+  // the product" preview you see on sites like Vistaprint. Purely CSS
+  // transforms driven by pointer position; no extra image or library.
+  function attachCard3dTilt(scene, cardEl) {
+    const BASE_TILT_X = 4; // resting tilt, matches the CSS default pose
+    const MAX_TILT_Y = 28; // left/right, following horizontal movement
+    const MAX_TILT_X = 12; // up/down, following vertical movement
+
+    function setTilt(rotateX, rotateY) {
+      cardEl.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+    }
+    function resetTilt() {
+      setTilt(BASE_TILT_X, 0);
+    }
+    function applyFromPoint(clientX, clientY) {
+      const rect = scene.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const relX = (clientX - rect.left) / rect.width; // 0 (left) .. 1 (right)
+      const relY = (clientY - rect.top) / rect.height; // 0 (top) .. 1 (bottom)
+      const rotateY = (relX - 0.5) * 2 * MAX_TILT_Y;
+      const rotateX = BASE_TILT_X - (relY - 0.5) * 2 * MAX_TILT_X;
+      setTilt(rotateX, rotateY);
+    }
+
+    resetTilt();
+
+    scene.addEventListener("mousemove", (e) => applyFromPoint(e.clientX, e.clientY));
+    scene.addEventListener("mouseleave", resetTilt);
+
+    scene.addEventListener(
+      "touchmove",
+      (e) => {
+        const touch = e.touches && e.touches[0];
+        if (!touch) return;
+        applyFromPoint(touch.clientX, touch.clientY);
+        e.preventDefault(); // avoid the page scrolling while looking around the card
+      },
+      { passive: false }
+    );
+    scene.addEventListener("touchend", resetTilt);
+    scene.addEventListener("touchcancel", resetTilt);
+  }
+
   // ---------- Step 7: Customize message + size ----------
   function renderCustomize() {
     panel.appendChild(el("p", { class: "step-eyebrow" }, ["Step 6 of 7"]));
@@ -489,18 +533,19 @@
     const layout = el("div", { class: "preview-layout" });
 
     const messageEl = el("p", { class: "card-3d-message" }, [state.message || "Your message will appear here as you type..."]);
-    const mock = el("div", { class: "card-mock" }, [
-      el("div", { class: "card-3d-scene" }, [
-        el("div", { class: "card-3d" }, [
-          el("div", { class: "card-3d-page inside" }, [messageEl]),
-          el("div", { class: "card-3d-page front" }, [
-            el("img", { src: design.url, alt: "Your selected card design" }),
-          ]),
-        ]),
+    const card3d = el("div", { class: "card-3d" }, [
+      el("div", { class: "card-3d-page inside" }, [messageEl]),
+      el("div", { class: "card-3d-page front" }, [
+        el("img", { src: design.url, alt: "Your selected card design" }),
       ]),
-      el("p", { class: "card-3d-caption" }, ["A rough preview of how your printed card will look, open"]),
+    ]);
+    const scene = el("div", { class: "card-3d-scene" }, [card3d]);
+    const mock = el("div", { class: "card-mock" }, [
+      scene,
+      el("p", { class: "card-3d-caption" }, ["Move your cursor over the card to look around it"]),
     ]);
     layout.appendChild(mock);
+    attachCard3dTilt(scene, card3d);
 
     const formCol = el("div", {});
     const msgField = el("div", { class: "field" }, [

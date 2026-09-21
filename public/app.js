@@ -518,6 +518,7 @@
       }),
     })
       .then((r) => {
+        if (r.status === 429) throw new Error("RATE_LIMITED");
         if (!r.ok) throw new Error("Generation failed");
         return r.json();
       })
@@ -527,15 +528,22 @@
         state.message = data.suggestedMessage || "";
         goTo(state.step + 1);
       })
-      .catch(() => {
+      .catch((err) => {
         clearInterval(rotateTimer);
         panel.innerHTML = "";
-        panel.appendChild(el("div", { class: "alert" }, [
-          "We had trouble creating your designs. Please try again — no charge has been made.",
-        ]));
-        const retry = el("button", { class: "btn btn-primary" }, ["Try Again"]);
-        retry.addEventListener("click", () => goTo(state.step));
-        panel.appendChild(retry);
+        const isRateLimited = err && err.message === "RATE_LIMITED";
+        panel.appendChild(
+          el("div", { class: "alert" }, [
+            isRateLimited
+              ? "You've generated a few designs already — please wait a little while before trying again."
+              : "We had trouble creating your designs. Please try again — no charge has been made.",
+          ])
+        );
+        if (!isRateLimited) {
+          const retry = el("button", { class: "btn btn-primary" }, ["Try Again"]);
+          retry.addEventListener("click", () => goTo(state.step));
+          panel.appendChild(retry);
+        }
         const backBtn = el("button", { class: "btn btn-secondary", style: "margin-left:12px;" }, ["Back"]);
         backBtn.addEventListener("click", back);
         panel.appendChild(backBtn);

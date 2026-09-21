@@ -48,6 +48,12 @@
     <div class="footer-bottom">&copy; <span id="year"></span> Cardello. All rights reserved.</div>
   </div>
 </footer>
-<script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+<script>
+  document.getElementById('year').textContent = new Date().getFullYear();
+  // The order went through, so there's nothing left to resume — clear the
+  // in-progress card app.js autosaves to this browser, so a future visit
+  // to create.html starts fresh instead of offering to continue this one.
+  try { localStorage.removeItem('cardello_draft_v1'); } catch (err) {}
+</script>
 </body>
 </html>

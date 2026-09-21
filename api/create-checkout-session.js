@@ -98,6 +98,18 @@ module.exports = async (req, res) => {
       success_url: `${siteUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/create.html`,
       shipping_address_collection: { allowed_countries: ["US", "CA"] },
+      // Flat $2 shipping charge, shown as its own line item at checkout —
+      // same for Canada and the US. Card price stays what's shown in the
+      // wizard; this is added on top by Stripe.
+      shipping_options: [
+        {
+          shipping_rate_data: {
+            type: "fixed_amount",
+            fixed_amount: { amount: 200, currency: "usd" },
+            display_name: "Shipping",
+          },
+        },
+      ],
       line_items: [
         {
           price_data: {

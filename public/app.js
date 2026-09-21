@@ -58,8 +58,8 @@
     { id: "elegant", label: "Elegant & Classic", emoji: "🌹" },
   ];
 
-  const CARD_PRICE = { standard: 6.99, large: 9.99 };
-  const FINISH_ADD = { matte: 0, glossy: 1.0 };
+  const CARD_PRICE = { standard: 16.99, large: 22.99 };
+  const FINISH_ADD = { matte: 0, glossy: 2.0 };
 
   function el(tag, attrs, children) {
     const node = document.createElement(tag);
@@ -488,8 +488,17 @@
 
     const layout = el("div", { class: "preview-layout" });
 
+    const messageEl = el("p", { class: "card-3d-message" }, [state.message || "Your message will appear here as you type..."]);
     const mock = el("div", { class: "card-mock" }, [
-      el("img", { src: design.url, alt: "Your selected card design" }),
+      el("div", { class: "card-3d-scene" }, [
+        el("div", { class: "card-3d" }, [
+          el("div", { class: "card-3d-page inside" }, [messageEl]),
+          el("div", { class: "card-3d-page front" }, [
+            el("img", { src: design.url, alt: "Your selected card design" }),
+          ]),
+        ]),
+      ]),
+      el("p", { class: "card-3d-caption" }, ["A rough preview of how your printed card will look, open"]),
     ]);
     layout.appendChild(mock);
 
@@ -501,6 +510,7 @@
     formCol.appendChild(msgField);
     msgField.querySelector("textarea").addEventListener("input", (e) => {
       state.message = e.target.value;
+      messageEl.textContent = state.message.trim() || "Your message will appear here as you type...";
     });
 
     formCol.appendChild(el("div", { class: "field" }, [el("label", {}, ["Card size"])]));
@@ -522,7 +532,7 @@
         state.finish = "matte";
         goTo(state.step);
       }),
-      pill("Glossy (+$1.00)", state.finish === "glossy", () => {
+      pill("Glossy (+$2.00)", state.finish === "glossy", () => {
         state.finish = "glossy";
         goTo(state.step);
       }),

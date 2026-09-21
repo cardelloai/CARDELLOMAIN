@@ -458,14 +458,42 @@
   }
 
   // ---------- Step 5: Generating (calls API) ----------
+  // Cycles through a few fun, changing lines while the design is being made
+  // (instead of one static sentence) so the wait feels alive — and drops in
+  // the recipient's first name when we have one, for a little extra delight.
+  function buildGeneratingMessages(name) {
+    const who = name ? name : "they";
+    const messages = [
+      "Studying the photo...",
+      "Sketching out some ideas...",
+      "Mixing colors and layouts...",
+      `${name ? name : "They"} ${name ? "is" : "are"} going to love this...`,
+      "Adding some personal touches...",
+      `Making sure ${who === "they" ? "it's" : who + "'s card is"} extra special...`,
+      "Putting on the finishing touches...",
+    ];
+    return messages;
+  }
+
   function renderGenerating() {
+    const name = (state.recipientName || "").trim();
+    const messages = buildGeneratingMessages(name);
+
+    const msgEl = el("p", { id: "generatingMsg" }, [messages[0]]);
     panel.appendChild(
       el("div", { class: "loading-wrap" }, [
         el("div", { class: "spinner" }),
         el("h2", {}, ["Creating your card designs..."]),
-        el("p", {}, ["This usually takes about 20–30 seconds. Please don't close this page."]),
+        msgEl,
+        el("p", { class: "small" }, ["This usually takes about 20–30 seconds. Please don't close this page."]),
       ])
     );
+
+    let msgIndex = 0;
+    const rotateTimer = setInterval(() => {
+      msgIndex = (msgIndex + 1) % messages.length;
+      msgEl.textContent = messages[msgIndex];
+    }, 2200);
 
     const occasionLabel =
       state.occasion === "other" ? state.occasionOther : OCCASIONS.find((o) => o.id === state.occasion).label;
@@ -494,11 +522,13 @@
         return r.json();
       })
       .then((data) => {
+        clearInterval(rotateTimer);
         state.designs = data.designs || [];
         state.message = data.suggestedMessage || "";
         goTo(state.step + 1);
       })
       .catch(() => {
+        clearInterval(rotateTimer);
         panel.innerHTML = "";
         panel.appendChild(el("div", { class: "alert" }, [
           "We had trouble creating your designs. Please try again — no charge has been made.",

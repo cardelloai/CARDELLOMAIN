@@ -243,6 +243,97 @@ async function sendOrderNotificationEmail(session) {
   return resp.json();
 }
 
+/** Sends a friendly confirmation email to the CUSTOMER (not the shop owner)
+ *  once their payment goes through — a receipt-style email confirming what
+ *  they ordered and that it's on its way, so they're not left wondering if
+ *  the order went through. No PDF attachment here (that's for the owner's
+ *  print copy); just a nice-looking summary with their card design. */
+async function sendCustomerConfirmationEmail(session) {
+  const meta = session.metadata || {};
+  const customerEmail = session.customer_details?.email;
+  if (!customerEmail) {
+    console.warn("No customer email on session", session.id, "— skipping customer confirmation.");
+    return;
+  }
+
+  const shipping = session.shipping_details || session.customer_details || {};
+  const address = shipping.address || {};
+  const addressLines = [
+    address.line1,
+    address.line2,
+    [address.city, address.state, address.postal_code].filter(Boolean).join(", "),
+    address.country,
+  ]
+    .filter(Boolean)
+    .join("<br>");
+
+  const amountDisplay = session.amount_total != null ? `$${(session.amount_total / 100).toFixed(2)}` : "";
+  const sizeLabel = meta.cardSize === "large" ? 'Large (7x10")' : 'Standard (5x7")';
+  const finishLabel = meta.finish === "glossy" ? "Glossy" : "Matte";
+
+  const html = `
+    <div style="font-family: Arial, Helvetica, sans-serif; max-width: 520px; margin: 0 auto; color: #2b2b2b;">
+      <h1 style="font-size: 22px; margin-bottom: 4px;">Your card is on its way! 🎉</h1>
+      <p style="color: #555;">Thanks for your order — here's a quick summary for your records.</p>
+
+      ${
+        meta.designUrl
+          ? `<img src="${escapeHtml(meta.designUrl)}" alt="Your card design" style="max-width:100%; border-radius:8px; border:1px solid #eee; margin: 16px 0;" />`
+          : ""
+      }
+
+      <table style="width:100%; border-collapse: collapse; margin: 16px 0;">
+        <tr>
+          <td style="padding:6px 0; color:#777;">Occasion</td>
+          <td style="padding:6px 0; text-align:right;">${escapeHtml(meta.occasion || "")}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0; color:#777;">Card</td>
+          <td style="padding:6px 0; text-align:right;">${escapeHtml(sizeLabel)}, ${escapeHtml(finishLabel)}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0; color:#777;">Total paid</td>
+          <td style="padding:6px 0; text-align:right;">${escapeHtml(amountDisplay)}</td>
+        </tr>
+      </table>
+
+      <h3 style="font-size:15px; margin-bottom:4px;">Your message inside the card</h3>
+      <p style="white-space: pre-wrap; border-left: 3px solid #eee; padding-left: 12px; color:#444; font-style: italic;">${escapeHtml(
+        meta.message || ""
+      )}</p>
+
+      <h3 style="font-size:15px; margin-bottom:4px;">Shipping to</h3>
+      <p style="color:#444;">${addressLines}</p>
+
+      <p style="color:#555; margin-top: 24px;">Your card will ship within the next few business days. If anything
+        about your order needs to change, just reply to this email.</p>
+
+      <p style="color:#aaa; font-size:12px; margin-top:32px;">Order reference: ${escapeHtml(session.id)}</p>
+    </div>
+  `;
+
+  const resp = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: process.env.NOTIFY_FROM_EMAIL || "Cardello Orders <onboarding@resend.dev>",
+      to: [customerEmail],
+      subject: `Your Cardello order is confirmed 🎉`,
+      html,
+    }),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Customer confirmation email failed: ${resp.status} ${errText}`);
+  }
+
+  return resp.json();
+}
+
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
     res.status(405).end();
@@ -274,6 +365,11 @@ module.exports = async (req, res) => {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
+
+    // These two emails are independent — the owner's copy (with the
+    // print-ready PDF) and the customer's receipt-style confirmation. Each
+    // is wrapped in its own try/catch so if one fails, it doesn't stop the
+    // other from sending.
     try {
       if (process.env.RESEND_API_KEY && process.env.NOTIFY_EMAIL) {
         await sendOrderNotificationEmail(session);
@@ -287,6 +383,16 @@ module.exports = async (req, res) => {
       console.error("Order notification error for session", session.id, err);
       // Respond 200 anyway so Stripe doesn't retry into a duplicate email;
       // check Vercel's function logs if an order's email doesn't arrive.
+    }
+
+    try {
+      if (process.env.RESEND_API_KEY) {
+        await sendCustomerConfirmationEmail(session);
+      } else {
+        console.warn("RESEND_API_KEY not set — skipping customer confirmation email for session", session.id);
+      }
+    } catch (err) {
+      console.error("Customer confirmation email error for session", session.id, err);
     }
   }
 

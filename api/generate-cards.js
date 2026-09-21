@@ -208,6 +208,13 @@ async function generateOneDesign({ prompt, styleDescriptor, photos }) {
 
 async function generateSuggestedMessage({ occasion, relationship, recipientName, details, tone }) {
   const toneWord = TONE_WORDS[tone] || TONE_WORDS.heartfelt;
+  const name = recipientName && recipientName.trim();
+
+  const nameInstruction = name
+    ? `Address it directly to them by name — start with a natural greeting like "Dear ${name}," or "${name},", and ` +
+      `work their name "${name}" in naturally at least one more time later in the message (not just the greeting), ` +
+      `the way you'd actually say their name to make it feel personal. Don't overdo it — 2 mentions total is plenty.`
+    : `No name was given, so write it as a warm direct address without a name (e.g. skip the greeting line or keep it generic).`;
 
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -222,7 +229,8 @@ async function generateSuggestedMessage({ occasion, relationship, recipientName,
           role: "user",
           content:
             `Write a short, ${toneWord} greeting card message (3-5 sentences max) for a ${occasion || "special"} card. ` +
-            `It's from the customer to their ${relationship || "loved one"}${recipientName ? `, ${recipientName}` : ""}. ` +
+            `It's from the customer to their ${relationship || "loved one"}${name ? `, ${name}` : ""}. ` +
+            `${nameInstruction} ` +
             `Details about them: ${details || "none provided"}. ` +
             `Write only the message text — no quotation marks, no signature line, no preamble.`,
         },
